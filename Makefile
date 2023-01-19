@@ -1445,13 +1445,18 @@ ifneq ($(filter undefined,$(SANITIZERS)),)
 BASIC_CFLAGS += -DSHA1DC_FORCE_ALIGNED_ACCESS
 endif
 ifneq ($(filter leak,$(SANITIZERS)),)
-BASIC_CFLAGS += -DSUPPRESS_ANNOTATED_LEAKS
-BASIC_CFLAGS += -O0
 SANITIZE_LEAK = YesCompiledWithIt
 endif
 ifneq ($(filter address,$(SANITIZERS)),)
 NO_REGEX = NeededForASAN
 SANITIZE_ADDRESS = YesCompiledWithIt
+ifeq ($(filter $(patsubst detect_leaks=%,%,$(ASAN_OPTIONS)),0 false),)
+SANITIZE_LEAK = YesViaASanOptions
+endif
+endif
+ifneq ($(SANITIZE_LEAK),)
+BASIC_CFLAGS += -DSUPPRESS_ANNOTATED_LEAKS
+BASIC_CFLAGS += -O0
 endif
 endif
 
