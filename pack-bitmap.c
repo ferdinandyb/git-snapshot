@@ -158,6 +158,21 @@ static void bitmap_index_seek_ahead(struct bitmap_index *bitmap_git,
 	bitmap_git->map_pos += offset;
 }
 
+static int bitmap_index_seek_commit(struct bitmap_index *bitmap_git,
+				     struct object_id *oid,
+				     size_t pos)
+{
+	const int bitmap_header_size = 6;
+
+	bitmap_index_seek(bitmap_git, pos, SEEK_SET);
+
+	if (bitmap_git->map_size - bitmap_git->map_pos < bitmap_header_size)
+		return error(_("corrupt ewah bitmap: truncated header for "
+			       "bitmap of commit \"%s\""),
+			oid_to_hex(oid));
+	return 0;
+}
+
 /*
  * Read a bitmap from the current read position on the mmaped
  * index, and increase the read position accordingly
@@ -739,7 +754,6 @@ static struct stored_bitmap *lazy_bitmap_for_commit(struct bitmap_index *bitmap_
 	struct object_id *oid = &commit->object.oid;
 	struct ewah_bitmap *bitmap;
 	struct stored_bitmap *xor_bitmap = NULL;
-	const int bitmap_header_size = 6;
 	static struct bitmap_lookup_table_xor_item *xor_items = NULL;
 	static size_t xor_items_nr = 0, xor_items_alloc = 0;
 	static int is_corrupt = 0;
@@ -798,13 +812,10 @@ static struct stored_bitmap *lazy_bitmap_for_commit(struct bitmap_index *bitmap_
 
 	while (xor_items_nr) {
 		xor_item = &xor_items[xor_items_nr - 1];
-		bitmap_index_seek(bitmap_git, xor_item->offset, SEEK_SET);
 
-		if (bitmap_git->map_size - bitmap_git->map_pos < bitmap_header_size) {
-			error(_("corrupt ewah bitmap: truncated header for bitmap of commit \"%s\""),
-				oid_to_hex(&xor_item->oid));
+		if (bitmap_index_seek_commit(bitmap_git, &xor_item->oid,
+					     xor_item->offset) < 0)
 			goto corrupt;
-		}
 
 		bitmap_index_seek(bitmap_git,
 				  sizeof(uint32_t) + sizeof(uint8_t), SEEK_CUR);
@@ -818,12 +829,8 @@ static struct stored_bitmap *lazy_bitmap_for_commit(struct bitmap_index *bitmap_
 		xor_items_nr--;
 	}
 
-	bitmap_index_seek(bitmap_git, offset, SEEK_SET);
-	if (bitmap_git->map_size - bitmap_git->map_pos < bitmap_header_size) {
-		error(_("corrupt ewah bitmap: truncated header for bitmap of commit \"%s\""),
-			oid_to_hex(oid));
+	if (bitmap_index_seek_commit(bitmap_git, oid, offset) < 0)
 		goto corrupt;
-	}
 
 	/*
 	 * Don't bother reading the commit's index position or its xor
