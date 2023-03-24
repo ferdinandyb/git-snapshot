@@ -134,6 +134,30 @@ static struct ewah_bitmap *lookup_stored_bitmap(struct stored_bitmap *st)
 	return composed;
 }
 
+static void bitmap_index_seek_set(struct bitmap_index *bitmap_git, size_t pos)
+{
+	if (pos >= bitmap_git->map_size)
+		die(_("bitmap position exceeds size (%"PRIuMAX" >= %"PRIuMAX")"),
+		    (uintmax_t)bitmap_git->map_pos,
+		    (uintmax_t)bitmap_git->map_size);
+
+	bitmap_git->map_pos = pos;
+}
+
+static void bitmap_index_seek_ahead(struct bitmap_index *bitmap_git,
+				    size_t offset)
+{
+	if (bitmap_git->map_pos + offset >= bitmap_git->map_size)
+		BUG("cannot seek %"PRIuMAX" byte(s) ahead of %"PRIuMAX" "
+		    "(%"PRIuMAX" >= %"PRIuMAX")",
+		    (uintmax_t)offset,
+		    (uintmax_t)bitmap_git->map_pos,
+		    (uintmax_t)(bitmap_git->map_pos + offset),
+		    (uintmax_t)bitmap_git->map_size);
+
+	bitmap_git->map_pos += offset;
+}
+
 /*
  * Read a bitmap from the current read position on the mmaped
  * index, and increase the read position accordingly
