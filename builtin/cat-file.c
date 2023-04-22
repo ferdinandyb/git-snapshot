@@ -38,6 +38,7 @@ struct batch_options {
 	int buffer_output;
 	int all_objects;
 	int unordered;
+	int dedup;
 	int transform_mode; /* may be 'w' or 'c' for --filters or --textconv */
 	int nul_terminated;
 	const char *format;
@@ -593,7 +594,7 @@ static int batch_unordered_object(const struct object_id *oid,
 {
 	struct object_cb_data *data = vdata;
 
-	if (oidset_insert(data->seen, oid))
+	if (data->seen && oidset_insert(data->seen, oid))
 		return 0;
 
 	oidcpy(&data->expand->oid, oid);
@@ -793,7 +794,7 @@ static int batch_objects(struct batch_options *opt)
 		data.info.typep = &data.type;
 
 	if (opt->all_objects) {
-		struct object_cb_data cb;
+		struct object_cb_data cb = { 0 };
 		struct object_info empty = OBJECT_INFO_INIT;
 
 		if (!memcmp(&data.info, &empty, sizeof(empty)))
@@ -807,15 +808,19 @@ static int batch_objects(struct batch_options *opt)
 		cb.opt = opt;
 		cb.expand = &data;
 		cb.scratch = &output;
+		cb.seen = NULL;
 
-		if (opt->unordered) {
+		if (opt->unordered || !opt->dedup) {
 			struct oidset seen = OIDSET_INIT;
+			enum for_each_object_flags flags = opt->unordered
+				? FOR_EACH_OBJECT_PACK_ORDER
+				: 0;
 
-			cb.seen = &seen;
+			if (opt->dedup)
+				cb.seen = &seen;
 
 			for_each_loose_object(batch_unordered_loose, &cb, 0);
-			for_each_packed_object(batch_unordered_packed, &cb,
-					       FOR_EACH_OBJECT_PACK_ORDER);
+			for_each_packed_object(batch_unordered_packed, &cb, flags);
 
 			oidset_clear(&seen);
 		} else {
@@ -932,7 +937,7 @@ int cmd_cat_file(int argc, const char **argv, const char *prefix)
 		N_("git cat-file (-e | -p) <object>"),
 		N_("git cat-file (-t | -s) [--allow-unknown-type] <object>"),
 		N_("git cat-file (--batch | --batch-check | --batch-command) [--batch-all-objects]\n"
-		   "             [--buffer] [--follow-symlinks] [--unordered]\n"
+		   "             [--buffer] [--follow-symlinks] [--unordered] [--dedup]\n"
 		   "             [--textconv | --filters] [-z]"),
 		N_("git cat-file (--textconv | --filters)\n"
 		   "             [<rev>:<path|tree-ish> | --path=<path|tree-ish> <rev>]"),
@@ -976,6 +981,8 @@ int cmd_cat_file(int argc, const char **argv, const char *prefix)
 			 N_("follow in-tree symlinks")),
 		OPT_BOOL(0, "unordered", &batch.unordered,
 			 N_("do not order objects before emitting them")),
+		OPT_BOOL(0, "dedup", &batch.dedup,
+			 N_("de-duplicate objects before emitting them")),
 		/* Textconv options, stand-ole*/
 		OPT_GROUP(N_("Emit object (blob or tree) with conversion or filter (stand-alone, or with batch)")),
 		OPT_CMDMODE(0, "textconv", &opt,
@@ -990,6 +997,7 @@ int cmd_cat_file(int argc, const char **argv, const char *prefix)
 	git_config(git_cat_file_config, NULL);
 
 	batch.buffer_output = -1;
+	batch.dedup = -1;
 
 	argc = parse_options(argc, argv, prefix, options, usage, 0);
 	opt_cw = (opt == 'c' || opt == 'w');
@@ -1024,10 +1032,19 @@ int cmd_cat_file(int argc, const char **argv, const char *prefix)
 	else if (batch.nul_terminated)
 		usage_msg_optf(_("'%s' requires a batch mode"), usage, options,
 			       "-z");
+	else if (batch.dedup >= 0)
+		usage_msg_optf(_("'%s' requires a batch mode"), usage, options,
+			       "--dedup");
+
+	if (batch.dedup > 0 && !batch.all_objects)
+		usage_msg_optf(_("'%s' requires --batch-all-objects"), usage,
+			       options, "--dedup");
 
 	/* Batch defaults */
 	if (batch.buffer_output < 0)
 		batch.buffer_output = batch.all_objects;
+	if (batch.dedup < 0)
+		batch.dedup = batch.all_objects;
 
 	/* Return early if we're in batch mode? */
 	if (batch.enabled) {

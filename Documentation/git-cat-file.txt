@@ -13,7 +13,7 @@ SYNOPSIS
 'git cat-file' (-e | -p) <object>
 'git cat-file' (-t | -s) [--allow-unknown-type] <object>
 'git cat-file' (--batch | --batch-check | --batch-command) [--batch-all-objects]
-	     [--buffer] [--follow-symlinks] [--unordered]
+	     [--buffer] [--follow-symlinks] [--unordered] [--dedup]
 	     [--textconv | --filters] [-z]
 'git cat-file' (--textconv | --filters)
 	     [<rev>:<path|tree-ish> | --path=<path|tree-ish> <rev>]
@@ -181,9 +181,15 @@ flush::
 	contents than hash order. The exact details of the order are
 	unspecified, but if you do not require a specific order, this
 	should generally result in faster output, especially with
-	`--batch`.  Note that `cat-file` will still show each object
-	only once, even if it is stored multiple times in the
-	repository.
+	`--batch`.  Note that with `--dedup` (which is the default),
+	`cat-file` will still show each object only once, even if it is
+	stored multiple times in the repository.
+
+--dedup::
+	When `--batch-all-objects` is in use, de-duplicate object IDs
+	before emitting them. Defaults to enabled. When the caller is
+	capable of handling duplicates themselves, this generally
+	results in significantly lower peak memory usage.
 
 --allow-unknown-type::
 	Allow `-s` or `-t` to query broken/corrupt objects of unknown type.
