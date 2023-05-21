@@ -25,6 +25,9 @@ struct compressed_bitmap *new_compressed_ewah(void)
 
 void free_compressed_bitmap(struct compressed_bitmap *bitmap)
 {
+	if (!bitmap)
+		return;
+
 	switch (bitmap->type) {
 	case EWAH:
 		ewah_pool_free(&bitmap->u.ewah);
@@ -54,7 +57,7 @@ void compressed_bitmap_set(struct compressed_bitmap *bitmap, size_t i)
 	switch (bitmap->type) {
 	case EWAH:
 		ewah_set(&bitmap->u.ewah, i);
-		break;
+		return;
 	}
 	unknown_bitmap_type(bitmap->type);
 }

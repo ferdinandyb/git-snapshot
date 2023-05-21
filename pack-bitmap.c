@@ -1223,7 +1223,7 @@ static void init_type_iterator(struct ewah_iterator *it,
 	switch (bitmap_git->type) {
 	case EWAH:
 		init_type_iterator_ewah(it, bitmap_git, type);
-		break;
+		return;
 	}
 	unknown_bitmap_type(bitmap_git->type);
 }
