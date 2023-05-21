@@ -21,6 +21,7 @@
 #include "list-objects-filter-options.h"
 #include "midx.h"
 #include "config.h"
+#include "compressed-bitmap.h"
 
 /*
  * An entry on the bitmap index, representing the bitmap for a given
@@ -28,7 +29,7 @@
  */
 struct stored_bitmap {
 	struct object_id oid;
-	struct ewah_bitmap *root;
+	struct compressed_bitmap *root;
 	struct stored_bitmap *xor;
 	int flags;
 };
@@ -124,14 +125,14 @@ static struct ewah_bitmap *lookup_stored_bitmap(struct stored_bitmap *st)
 	struct ewah_bitmap *composed;
 
 	if (!st->xor)
-		return st->root;
+		return st->root->u.ewah;
 
 	composed = ewah_pool_new();
 	parent = lookup_stored_bitmap(st->xor);
-	ewah_xor(st->root, parent, composed);
+	ewah_xor(st->root->u.ewah, parent, composed);
 
-	ewah_pool_free(st->root);
-	st->root = composed;
+	ewah_pool_free(st->root->u.ewah);
+	st->root = compress_ewah_bitmap(composed);
 	st->xor = NULL;
 
 	return composed;
@@ -226,7 +227,7 @@ static struct stored_bitmap *store_bitmap(struct bitmap_index *index,
 	int ret;
 
 	stored = xmalloc(sizeof(struct stored_bitmap));
-	stored->root = root;
+	stored->root = compress_ewah_bitmap(root);
 	stored->xor = xor_with;
 	stored->flags = flags;
 	oidcpy(&stored->oid, oid);
@@ -2185,7 +2186,7 @@ void free_bitmap_index(struct bitmap_index *b)
 	if (b->bitmaps) {
 		struct stored_bitmap *sb;
 		kh_foreach_value(b->bitmaps, sb, {
-			ewah_pool_free(sb->root);
+			ewah_pool_free(sb->root->u.ewah);
 			free(sb);
 		});
 	}

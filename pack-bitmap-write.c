@@ -20,21 +20,22 @@
 #include "trace2.h"
 #include "tree.h"
 #include "tree-walk.h"
+#include "compressed-bitmap.h"
 
 struct bitmapped_commit {
 	struct commit *commit;
-	struct ewah_bitmap *bitmap;
-	struct ewah_bitmap *write_as;
+	struct compressed_bitmap *bitmap;
+	struct compressed_bitmap *write_as;
 	int flags;
 	int xor_offset;
 	uint32_t commit_pos;
 };
 
 struct bitmap_writer {
-	struct ewah_bitmap *commits;
-	struct ewah_bitmap *trees;
-	struct ewah_bitmap *blobs;
-	struct ewah_bitmap *tags;
+	struct compressed_bitmap *commits;
+	struct compressed_bitmap *trees;
+	struct compressed_bitmap *blobs;
+	struct compressed_bitmap *tags;
 
 	kh_oid_map_t *bitmaps;
 	struct packing_data *to_pack;
@@ -63,10 +64,10 @@ void bitmap_writer_build_type_index(struct packing_data *to_pack,
 {
 	uint32_t i;
 
-	writer.commits = ewah_new();
-	writer.trees = ewah_new();
-	writer.blobs = ewah_new();
-	writer.tags = ewah_new();
+	writer.commits = new_compressed_ewah();
+	writer.trees = new_compressed_ewah();
+	writer.blobs = new_compressed_ewah();
+	writer.tags = new_compressed_ewah();
 	ALLOC_ARRAY(to_pack->in_pack_pos, to_pack->nr_objects);
 
 	for (i = 0; i < index_nr; ++i) {
@@ -91,19 +92,19 @@ void bitmap_writer_build_type_index(struct packing_data *to_pack,
 
 		switch (real_type) {
 		case OBJ_COMMIT:
-			ewah_set(writer.commits, i);
+			compressed_bitmap_set(writer.commits, i);
 			break;
 
 		case OBJ_TREE:
-			ewah_set(writer.trees, i);
+			compressed_bitmap_set(writer.trees, i);
 			break;
 
 		case OBJ_BLOB:
-			ewah_set(writer.blobs, i);
+			compressed_bitmap_set(writer.blobs, i);
 			break;
 
 		case OBJ_TAG:
-			ewah_set(writer.tags, i);
+			compressed_bitmap_set(writer.tags, i);
 			break;
 
 		default:
@@ -159,7 +160,7 @@ static void compute_xor_offsets(void)
 		struct bitmapped_commit *stored = &writer.selected[next];
 
 		int best_offset = 0;
-		struct ewah_bitmap *best_bitmap = stored->bitmap;
+		struct ewah_bitmap *best_bitmap = compressed_as_ewah(stored->bitmap);
 		struct ewah_bitmap *test_xor;
 
 		for (i = 1; i <= MAX_XOR_OFFSET_SEARCH; ++i) {
@@ -169,10 +170,12 @@ static void compute_xor_offsets(void)
 				break;
 
 			test_xor = ewah_pool_new();
-			ewah_xor(writer.selected[curr].bitmap, stored->bitmap, test_xor);
+			ewah_xor(compressed_as_ewah(writer.selected[curr].bitmap),
+				 compressed_as_ewah(stored->bitmap),
+				 test_xor);
 
 			if (test_xor->buffer_size < best_bitmap->buffer_size) {
-				if (best_bitmap != stored->bitmap)
+				if (best_bitmap != compressed_as_ewah(stored->bitmap))
 					ewah_pool_free(best_bitmap);
 
 				best_bitmap = test_xor;
@@ -183,7 +186,7 @@ static void compute_xor_offsets(void)
 		}
 
 		stored->xor_offset = best_offset;
-		stored->write_as = best_bitmap;
+		stored->write_as = compress_ewah_bitmap(best_bitmap);
 
 		next++;
 	}
@@ -460,7 +463,7 @@ static void store_selected(struct bb_commit *ent, struct commit *commit)
 	khiter_t hash_pos;
 	int hash_ret;
 
-	stored->bitmap = bitmap_to_ewah(ent->bitmap);
+	stored->bitmap = compress_ewah_bitmap(bitmap_to_ewah(ent->bitmap));
 
 	hash_pos = kh_put_oid_map(writer.bitmaps, commit->object.oid, &hash_ret);
 	if (hash_ret == 0)
@@ -650,10 +653,19 @@ static int hashwrite_ewah_helper(void *f, const void *buf, size_t len)
 /**
  * Write the bitmap index to disk
  */
-static inline void dump_bitmap(struct hashfile *f, struct ewah_bitmap *bitmap)
+static inline void dump_bitmap(struct hashfile *f,
+			       struct compressed_bitmap *bitmap)
 {
-	if (ewah_serialize_to(bitmap, hashwrite_ewah_helper, f) < 0)
-		die("Failed to write bitmap index");
+	switch (bitmap->type) {
+	case EWAH:
+		if (ewah_serialize_to(compressed_as_ewah(bitmap),
+				      hashwrite_ewah_helper, f) < 0)
+			die("Failed to write bitmap index");
+		break;
+	default:
+		BUG("unknown bitmap type: %d", bitmap->type);
+		break;
+	}
 }
 
 static const struct object_id *oid_access(size_t pos, const void *table)
