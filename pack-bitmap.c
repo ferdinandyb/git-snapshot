@@ -53,6 +53,8 @@ struct bitmap_index {
 	struct packed_git *pack;
 	struct multi_pack_index *midx;
 
+	enum compressed_bitmap_type type;
+
 	/*
 	 * Mark the first `reuse_objects` in the packfile as reused:
 	 * they will be sent as-is without using them for repacking
@@ -72,10 +74,10 @@ struct bitmap_index {
 	 * type. This provides type information when yielding the objects from
 	 * the packfile during a walk, which allows for better delta bases.
 	 */
-	struct ewah_bitmap *commits;
-	struct ewah_bitmap *trees;
-	struct ewah_bitmap *blobs;
-	struct ewah_bitmap *tags;
+	struct compressed_bitmap *commits;
+	struct compressed_bitmap *trees;
+	struct compressed_bitmap *blobs;
+	struct compressed_bitmap *tags;
 
 	/* Map from object ID -> `stored_bitmap` for all the bitmapped commits */
 	kh_oid_map_t *bitmaps;
@@ -119,30 +121,27 @@ struct bitmap_index {
 	unsigned int version;
 };
 
-static struct ewah_bitmap *lookup_stored_bitmap(struct stored_bitmap *st)
+static struct compressed_bitmap *lookup_stored_bitmap(struct stored_bitmap *st)
 {
-	struct ewah_bitmap *parent;
+	struct compressed_bitmap *parent;
 	struct ewah_bitmap *composed;
 
 	if (!st->xor)
-		return compressed_as_ewah(st->root);
+		return st->root;
 
 	composed = ewah_pool_new();
 	parent = lookup_stored_bitmap(st->xor);
-	ewah_xor(compressed_as_ewah(st->root), parent, composed);
+	ewah_xor(compressed_as_ewah(st->root), compressed_as_ewah(parent),
+		 composed);
 
 	ewah_pool_free(compressed_as_ewah(st->root));
 	st->root = compress_ewah_bitmap(composed);
 	st->xor = NULL;
 
-	return composed;
+	return compress_ewah_bitmap(composed);
 }
 
-/*
- * Read a bitmap from the current read position on the mmaped
- * index, and increase the read position accordingly
- */
-static struct ewah_bitmap *read_bitmap_1(struct bitmap_index *index)
+static struct compressed_bitmap *read_ewah_bitmap_1(struct bitmap_index *index)
 {
 	struct ewah_bitmap *b = ewah_pool_new();
 
@@ -157,7 +156,21 @@ static struct ewah_bitmap *read_bitmap_1(struct bitmap_index *index)
 	}
 
 	index->map_pos += bitmap_size;
-	return b;
+
+	return compress_ewah_bitmap(b);
+}
+
+/*
+ * Read a bitmap from the current read position on the mmaped
+ * index, and increase the read position accordingly
+ */
+static struct compressed_bitmap *read_bitmap_1(struct bitmap_index *index)
+{
+	switch (index->type) {
+	case EWAH:
+		return read_ewah_bitmap_1(index);
+	}
+	unknown_bitmap_type(index->type);
 }
 
 static uint32_t bitmap_num_objects(struct bitmap_index *index)
@@ -217,7 +230,7 @@ static int load_bitmap_header(struct bitmap_index *index)
 }
 
 static struct stored_bitmap *store_bitmap(struct bitmap_index *index,
-					  struct ewah_bitmap *root,
+					  struct compressed_bitmap *root,
 					  const struct object_id *oid,
 					  struct stored_bitmap *xor_with,
 					  int flags)
@@ -227,7 +240,7 @@ static struct stored_bitmap *store_bitmap(struct bitmap_index *index,
 	int ret;
 
 	stored = xmalloc(sizeof(struct stored_bitmap));
-	stored->root = compress_ewah_bitmap(root);
+	stored->root = root;
 	stored->xor = xor_with;
 	stored->flags = flags;
 	oidcpy(&stored->oid, oid);
@@ -271,14 +284,14 @@ static int nth_bitmap_object_oid(struct bitmap_index *index,
 	return nth_packed_object_id(oid, index->pack, n);
 }
 
-static int load_bitmap_entries_v1(struct bitmap_index *index)
+static int load_bitmap_entries_v1_ewah(struct bitmap_index *index)
 {
 	uint32_t i;
 	struct stored_bitmap *recent_bitmaps[MAX_XOR_OFFSET] = { NULL };
 
 	for (i = 0; i < index->entry_count; ++i) {
 		int xor_offset, flags;
-		struct ewah_bitmap *bitmap = NULL;
+		struct compressed_bitmap *bitmap = NULL;
 		struct stored_bitmap *xor_bitmap = NULL;
 		uint32_t commit_idx_pos;
 		struct object_id oid;
@@ -313,6 +326,15 @@ static int load_bitmap_entries_v1(struct bitmap_index *index)
 	}
 
 	return 0;
+}
+
+static int load_bitmap_entries_v1(struct bitmap_index *index)
+{
+	switch (index->type) {
+	case EWAH:
+		return load_bitmap_entries_v1_ewah(index);
+	}
+	unknown_bitmap_type(index->type);
 }
 
 char *midx_bitmap_filename(struct multi_pack_index *midx)
@@ -495,6 +517,7 @@ static int load_bitmap(struct repository *r, struct bitmap_index *bitmap_git)
 
 	bitmap_git->bitmaps = kh_init_oid_map();
 	bitmap_git->ext_index.positions = kh_init_oid_pos();
+	bitmap_git->type = EWAH; /* TODO */
 
 	if (load_reverse_index(r, bitmap_git))
 		goto failed;
@@ -716,7 +739,7 @@ static struct stored_bitmap *lazy_bitmap_for_commit(struct bitmap_index *bitmap_
 	int flags;
 	struct bitmap_lookup_table_triplet triplet;
 	struct object_id *oid = &commit->object.oid;
-	struct ewah_bitmap *bitmap;
+	struct compressed_bitmap *bitmap;
 	struct stored_bitmap *xor_bitmap = NULL;
 	const int bitmap_header_size = 6;
 	static struct bitmap_lookup_table_xor_item *xor_items = NULL;
@@ -840,8 +863,8 @@ corrupt:
 	return NULL;
 }
 
-struct ewah_bitmap *bitmap_for_commit(struct bitmap_index *bitmap_git,
-				      struct commit *commit)
+struct compressed_bitmap *bitmap_for_commit(struct bitmap_index *bitmap_git,
+					    struct commit *commit)
 {
 	khiter_t hash_pos = kh_get_oid_map(bitmap_git->bitmaps,
 					   commit->object.oid);
@@ -968,7 +991,7 @@ static int add_to_include_set(struct bitmap_index *bitmap_git,
 			      struct commit *commit,
 			      int bitmap_pos)
 {
-	struct ewah_bitmap *partial;
+	struct compressed_bitmap *partial;
 
 	if (data->seen && bitmap_get(data->seen, bitmap_pos))
 		return 0;
@@ -978,7 +1001,7 @@ static int add_to_include_set(struct bitmap_index *bitmap_git,
 
 	partial = bitmap_for_commit(bitmap_git, commit);
 	if (partial) {
-		bitmap_or_ewah(data->base, partial);
+		bitmap_or_ewah(data->base, compressed_as_ewah(partial));
 		return 0;
 	}
 
@@ -1031,15 +1054,15 @@ static int add_commit_to_bitmap(struct bitmap_index *bitmap_git,
 				struct bitmap **base,
 				struct commit *commit)
 {
-	struct ewah_bitmap *or_with = bitmap_for_commit(bitmap_git, commit);
+	struct compressed_bitmap *or_with = bitmap_for_commit(bitmap_git, commit);
 
 	if (!or_with)
 		return 0;
 
 	if (!*base)
-		*base = ewah_to_bitmap(or_with);
+		*base = compressed_as_bitmap(or_with);
 	else
-		bitmap_or_ewah(*base, or_with);
+		bitmap_or_ewah(*base, compressed_as_ewah(or_with));
 
 	return 1;
 }
@@ -1166,31 +1189,43 @@ static void show_extended_objects(struct bitmap_index *bitmap_git,
 	}
 }
 
-static void init_type_iterator(struct ewah_iterator *it,
-			       struct bitmap_index *bitmap_git,
-			       enum object_type type)
+static void init_type_iterator_ewah(struct ewah_iterator *it,
+				    struct bitmap_index *bitmap_git,
+				    enum object_type type)
 {
 	switch (type) {
 	case OBJ_COMMIT:
-		ewah_iterator_init(it, bitmap_git->commits);
+		ewah_iterator_init(it, compressed_as_ewah(bitmap_git->commits));
 		break;
 
 	case OBJ_TREE:
-		ewah_iterator_init(it, bitmap_git->trees);
+		ewah_iterator_init(it, compressed_as_ewah(bitmap_git->trees));
 		break;
 
 	case OBJ_BLOB:
-		ewah_iterator_init(it, bitmap_git->blobs);
+		ewah_iterator_init(it, compressed_as_ewah(bitmap_git->blobs));
 		break;
 
 	case OBJ_TAG:
-		ewah_iterator_init(it, bitmap_git->tags);
+		ewah_iterator_init(it, compressed_as_ewah(bitmap_git->tags));
 		break;
 
 	default:
 		BUG("object type %d not stored by bitmap type index", type);
 		break;
 	}
+}
+
+static void init_type_iterator(struct ewah_iterator *it,
+			       struct bitmap_index *bitmap_git,
+			       enum object_type type)
+{
+	switch (bitmap_git->type) {
+	case EWAH:
+		init_type_iterator_ewah(it, bitmap_git, type);
+		break;
+	}
+	unknown_bitmap_type(bitmap_git->type);
 }
 
 static void show_objects_for_type(
@@ -1987,7 +2022,7 @@ void test_bitmap_walk(struct rev_info *revs)
 	size_t result_popcnt;
 	struct bitmap_test_data tdata;
 	struct bitmap_index *bitmap_git;
-	struct ewah_bitmap *bm;
+	struct compressed_bitmap *bm;
 
 	if (!(bitmap_git = prepare_bitmap_git(revs->repo)))
 		die(_("failed to load bitmap indexes"));
@@ -2005,9 +2040,10 @@ void test_bitmap_walk(struct rev_info *revs)
 
 	if (bm) {
 		fprintf_ln(stderr, "Found bitmap for '%s'. %d bits / %08x checksum",
-			oid_to_hex(&root->oid), (int)bm->bit_size, ewah_checksum(bm));
+			oid_to_hex(&root->oid), (int)compressed_as_ewah(bm)->bit_size,
+			ewah_checksum(compressed_as_ewah(bm)));
 
-		result = ewah_to_bitmap(bm);
+		result = compressed_as_bitmap(bm);
 	}
 
 	if (!result)
@@ -2024,10 +2060,10 @@ void test_bitmap_walk(struct rev_info *revs)
 
 	tdata.bitmap_git = bitmap_git;
 	tdata.base = bitmap_new();
-	tdata.commits = ewah_to_bitmap(bitmap_git->commits);
-	tdata.trees = ewah_to_bitmap(bitmap_git->trees);
-	tdata.blobs = ewah_to_bitmap(bitmap_git->blobs);
-	tdata.tags = ewah_to_bitmap(bitmap_git->tags);
+	tdata.commits = compressed_as_bitmap(bitmap_git->commits);
+	tdata.trees = compressed_as_bitmap(bitmap_git->trees);
+	tdata.blobs = compressed_as_bitmap(bitmap_git->blobs);
+	tdata.tags = compressed_as_bitmap(bitmap_git->tags);
 	tdata.prg = start_progress("Verifying bitmap entries", result_popcnt);
 	tdata.seen = 0;
 
@@ -2104,14 +2140,14 @@ cleanup:
 }
 
 int rebuild_bitmap(const uint32_t *reposition,
-		   struct ewah_bitmap *source,
+		   struct compressed_bitmap *source,
 		   struct bitmap *dest)
 {
 	uint32_t pos = 0;
 	struct ewah_iterator it;
 	eword_t word;
 
-	ewah_iterator_init(&it, source);
+	ewah_iterator_init(&it, compressed_as_ewah(source));
 
 	while (ewah_iterator_next(&word, &it)) {
 		uint32_t offset, bit_pos;
@@ -2179,14 +2215,14 @@ void free_bitmap_index(struct bitmap_index *b)
 
 	if (b->map)
 		munmap(b->map, b->map_size);
-	ewah_pool_free(b->commits);
-	ewah_pool_free(b->trees);
-	ewah_pool_free(b->blobs);
-	ewah_pool_free(b->tags);
+	free_compressed_bitmap(b->commits);
+	free_compressed_bitmap(b->trees);
+	free_compressed_bitmap(b->blobs);
+	free_compressed_bitmap(b->tags);
 	if (b->bitmaps) {
 		struct stored_bitmap *sb;
 		kh_foreach_value(b->bitmaps, sb, {
-			ewah_pool_free(compressed_as_ewah(sb->root));
+			free_compressed_bitmap(sb->root);
 			free(sb);
 		});
 	}

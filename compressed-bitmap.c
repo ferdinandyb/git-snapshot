@@ -1,6 +1,11 @@
 #include "git-compat-util.h"
 #include "compressed-bitmap.h"
 
+void NORETURN unknown_bitmap_type(enum compressed_bitmap_type type)
+{
+	BUG("unknown compressed bitmap type: %d", type);
+}
+
 struct compressed_bitmap *compress_ewah_bitmap(struct ewah_bitmap *ewah)
 {
 	struct compressed_bitmap *cb;
@@ -18,11 +23,30 @@ struct compressed_bitmap *new_compressed_ewah(void)
 	return compress_ewah_bitmap(ewah_new());
 }
 
+void free_compressed_bitmap(struct compressed_bitmap *bitmap)
+{
+	switch (bitmap->type) {
+	case EWAH:
+		ewah_pool_free(&bitmap->u.ewah);
+		return;
+	}
+	unknown_bitmap_type(bitmap->type);
+}
+
 struct ewah_bitmap *compressed_as_ewah(struct compressed_bitmap *bitmap)
 {
 	if (bitmap->type != EWAH)
 		BUG("called compressed_as_ewah() with non-EWAH bitmap");
-	return &(bitmap->u.ewah);
+	return &bitmap->u.ewah;
+}
+
+struct bitmap *compressed_as_bitmap(struct compressed_bitmap *bitmap)
+{
+	switch (bitmap->type) {
+	case EWAH:
+		return ewah_to_bitmap(compressed_as_ewah(bitmap));
+	}
+	unknown_bitmap_type(bitmap->type);
 }
 
 void compressed_bitmap_set(struct compressed_bitmap *bitmap, size_t i)
@@ -31,7 +55,6 @@ void compressed_bitmap_set(struct compressed_bitmap *bitmap, size_t i)
 	case EWAH:
 		ewah_set(&bitmap->u.ewah, i);
 		break;
-	default:
-		BUG("unknown compressed bitmap type: %d", bitmap->type);
 	}
+	unknown_bitmap_type(bitmap->type);
 }

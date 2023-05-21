@@ -6,6 +6,7 @@
 #include "pack.h"
 #include "pack-objects.h"
 #include "string-list.h"
+#include "compressed-bitmap.h"
 
 struct commit;
 struct repository;
@@ -92,10 +93,10 @@ void bitmap_writer_build_type_index(struct packing_data *to_pack,
 uint32_t *create_bitmap_mapping(struct bitmap_index *bitmap_git,
 				struct packing_data *mapping);
 int rebuild_bitmap(const uint32_t *reposition,
-		   struct ewah_bitmap *source,
+		   struct compressed_bitmap *source,
 		   struct bitmap *dest);
-struct ewah_bitmap *bitmap_for_commit(struct bitmap_index *bitmap_git,
-				      struct commit *commit);
+struct compressed_bitmap *bitmap_for_commit(struct bitmap_index *bitmap_git,
+					    struct commit *commit);
 void bitmap_writer_select_commits(struct commit **indexed_commits,
 		unsigned int indexed_commits_nr, int max_bitmaps);
 int bitmap_writer_build(struct packing_data *to_pack);
