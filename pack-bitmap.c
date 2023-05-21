@@ -125,13 +125,13 @@ static struct ewah_bitmap *lookup_stored_bitmap(struct stored_bitmap *st)
 	struct ewah_bitmap *composed;
 
 	if (!st->xor)
-		return st->root->u.ewah;
+		return compressed_as_ewah(st->root);
 
 	composed = ewah_pool_new();
 	parent = lookup_stored_bitmap(st->xor);
-	ewah_xor(st->root->u.ewah, parent, composed);
+	ewah_xor(compressed_as_ewah(st->root), parent, composed);
 
-	ewah_pool_free(st->root->u.ewah);
+	ewah_pool_free(compressed_as_ewah(st->root));
 	st->root = compress_ewah_bitmap(composed);
 	st->xor = NULL;
 
@@ -2186,7 +2186,7 @@ void free_bitmap_index(struct bitmap_index *b)
 	if (b->bitmaps) {
 		struct stored_bitmap *sb;
 		kh_foreach_value(b->bitmaps, sb, {
-			ewah_pool_free(sb->root->u.ewah);
+			ewah_pool_free(compressed_as_ewah(sb->root));
 			free(sb);
 		});
 	}
