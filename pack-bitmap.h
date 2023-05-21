@@ -1,7 +1,6 @@
 #ifndef PACK_BITMAP_H
 #define PACK_BITMAP_H
 
-#include "ewah/ewok.h"
 #include "khash.h"
 #include "pack.h"
 #include "pack-objects.h"
