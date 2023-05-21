@@ -657,15 +657,13 @@ static inline void dump_bitmap(struct hashfile *f,
 			       struct compressed_bitmap *bitmap)
 {
 	switch (bitmap->type) {
-	case EWAH:
+	case TYPE_EWAH:
 		if (ewah_serialize_to(compressed_as_ewah(bitmap),
 				      hashwrite_ewah_helper, f) < 0)
 			die("Failed to write bitmap index");
-		break;
-	default:
-		BUG("unknown bitmap type: %d", bitmap->type);
-		break;
+		return;
 	}
+	unknown_bitmap_type(bitmap->type);
 }
 
 static const struct object_id *oid_access(size_t pos, const void *table)

@@ -13,7 +13,7 @@ struct compressed_bitmap *compress_ewah_bitmap(struct ewah_bitmap *ewah)
 	CALLOC_ARRAY(cb, 1);
 
 	cb->u.ewah = *ewah;
-	cb->type = EWAH;
+	cb->type = TYPE_EWAH;
 
 	return cb;
 }
@@ -29,7 +29,7 @@ void free_compressed_bitmap(struct compressed_bitmap *bitmap)
 		return;
 
 	switch (bitmap->type) {
-	case EWAH:
+	case TYPE_EWAH:
 		ewah_pool_free(&bitmap->u.ewah);
 		return;
 	}
@@ -38,7 +38,7 @@ void free_compressed_bitmap(struct compressed_bitmap *bitmap)
 
 struct ewah_bitmap *compressed_as_ewah(struct compressed_bitmap *bitmap)
 {
-	if (bitmap->type != EWAH)
+	if (bitmap->type != TYPE_EWAH)
 		BUG("called compressed_as_ewah() with non-EWAH bitmap");
 	return &bitmap->u.ewah;
 }
@@ -46,7 +46,7 @@ struct ewah_bitmap *compressed_as_ewah(struct compressed_bitmap *bitmap)
 struct bitmap *compressed_as_bitmap(struct compressed_bitmap *bitmap)
 {
 	switch (bitmap->type) {
-	case EWAH:
+	case TYPE_EWAH:
 		return ewah_to_bitmap(compressed_as_ewah(bitmap));
 	}
 	unknown_bitmap_type(bitmap->type);
@@ -55,7 +55,7 @@ struct bitmap *compressed_as_bitmap(struct compressed_bitmap *bitmap)
 void compressed_bitmap_set(struct compressed_bitmap *bitmap, size_t i)
 {
 	switch (bitmap->type) {
-	case EWAH:
+	case TYPE_EWAH:
 		ewah_set(&bitmap->u.ewah, i);
 		return;
 	}

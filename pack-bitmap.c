@@ -130,8 +130,15 @@ static struct compressed_bitmap *lookup_stored_bitmap(enum compressed_bitmap_typ
 	if (!st->xor)
 		return st->root;
 
-	if (type != EWAH)
+	if (type != TYPE_EWAH) {
+		/*
+		 * we only support XOR'd bitmaps when compressing with
+		 * EWAH, so all bitmaps we read at this point can be
+		 * safely forced to an EWAH bitmap with
+		 * `compressed_as_ewah()`.
+		 */
 		BUG("cannot XOR non-EWAH bitmap type: %d", type);
+	}
 
 	composed = ewah_pool_new();
 	parent = lookup_stored_bitmap(type, st->xor);
@@ -171,7 +178,7 @@ static struct compressed_bitmap *read_ewah_bitmap_1(struct bitmap_index *index)
 static struct compressed_bitmap *read_bitmap_1(struct bitmap_index *index)
 {
 	switch (index->type) {
-	case EWAH:
+	case TYPE_EWAH:
 		return read_ewah_bitmap_1(index);
 	}
 	unknown_bitmap_type(index->type);
@@ -335,7 +342,7 @@ static int load_bitmap_entries_v1_ewah(struct bitmap_index *index)
 static int load_bitmap_entries_v1(struct bitmap_index *index)
 {
 	switch (index->type) {
-	case EWAH:
+	case TYPE_EWAH:
 		return load_bitmap_entries_v1_ewah(index);
 	}
 	unknown_bitmap_type(index->type);
@@ -521,7 +528,7 @@ static int load_bitmap(struct repository *r, struct bitmap_index *bitmap_git)
 
 	bitmap_git->bitmaps = kh_init_oid_map();
 	bitmap_git->ext_index.positions = kh_init_oid_pos();
-	bitmap_git->type = EWAH; /* TODO */
+	bitmap_git->type = TYPE_EWAH; /* TODO */
 
 	if (load_reverse_index(r, bitmap_git))
 		goto failed;
@@ -1226,7 +1233,7 @@ static void init_type_iterator(struct ewah_iterator *it,
 			       enum object_type type)
 {
 	switch (bitmap_git->type) {
-	case EWAH:
+	case TYPE_EWAH:
 		init_type_iterator_ewah(it, bitmap_git, type);
 		return;
 	}

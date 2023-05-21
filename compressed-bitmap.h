@@ -4,7 +4,7 @@
 #include "ewah/ewok.h"
 
 enum compressed_bitmap_type {
-	EWAH = 0,
+	TYPE_EWAH = 0,
 };
 
 void NORETURN unknown_bitmap_type(enum compressed_bitmap_type type);
