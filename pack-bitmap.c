@@ -121,7 +121,8 @@ struct bitmap_index {
 	unsigned int version;
 };
 
-static struct compressed_bitmap *lookup_stored_bitmap(struct stored_bitmap *st)
+static struct compressed_bitmap *lookup_stored_bitmap(enum compressed_bitmap_type type,
+						      struct stored_bitmap *st)
 {
 	struct compressed_bitmap *parent;
 	struct ewah_bitmap *composed;
@@ -129,8 +130,11 @@ static struct compressed_bitmap *lookup_stored_bitmap(struct stored_bitmap *st)
 	if (!st->xor)
 		return st->root;
 
+	if (type != EWAH)
+		BUG("cannot XOR non-EWAH bitmap type: %d", type);
+
 	composed = ewah_pool_new();
-	parent = lookup_stored_bitmap(st->xor);
+	parent = lookup_stored_bitmap(type, st->xor);
 	ewah_xor(compressed_as_ewah(st->root), compressed_as_ewah(parent),
 		 composed);
 
@@ -878,9 +882,10 @@ struct compressed_bitmap *bitmap_for_commit(struct bitmap_index *bitmap_git,
 		bitmap = lazy_bitmap_for_commit(bitmap_git, commit);
 		if (!bitmap)
 			return NULL;
-		return lookup_stored_bitmap(bitmap);
+		return lookup_stored_bitmap(bitmap_git->type, bitmap);
 	}
-	return lookup_stored_bitmap(kh_value(bitmap_git->bitmaps, hash_pos));
+	return lookup_stored_bitmap(bitmap_git->type,
+				    kh_value(bitmap_git->bitmaps, hash_pos));
 }
 
 static inline int bitmap_position_extended(struct bitmap_index *bitmap_git,
@@ -1195,19 +1200,19 @@ static void init_type_iterator_ewah(struct ewah_iterator *it,
 {
 	switch (type) {
 	case OBJ_COMMIT:
-		ewah_iterator_init(it, compressed_as_ewah(bitmap_git->commits));
+		ewah_iterator_init(it, &bitmap_git->commits->u.ewah);
 		break;
 
 	case OBJ_TREE:
-		ewah_iterator_init(it, compressed_as_ewah(bitmap_git->trees));
+		ewah_iterator_init(it, &bitmap_git->trees->u.ewah);
 		break;
 
 	case OBJ_BLOB:
-		ewah_iterator_init(it, compressed_as_ewah(bitmap_git->blobs));
+		ewah_iterator_init(it, &bitmap_git->blobs->u.ewah);
 		break;
 
 	case OBJ_TAG:
-		ewah_iterator_init(it, compressed_as_ewah(bitmap_git->tags));
+		ewah_iterator_init(it, &bitmap_git->tags->u.ewah);
 		break;
 
 	default:
