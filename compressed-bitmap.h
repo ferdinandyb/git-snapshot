@@ -1,5 +1,5 @@
 #ifndef COMPRESSED_BITMAP_H
-#define COMPRESSED_BITAMP_H
+#define COMPRESSED_BITMAP_H
 
 #include "ewah/ewok.h"
 
