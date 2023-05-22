@@ -70,13 +70,38 @@ struct roaring_bitmap_s *compressed_as_roaring(struct compressed_bitmap *bitmap)
 	return &bitmap->u.roaring;
 }
 
+#define ROARING_BUFFER_LEN (256)
+
+static struct bitmap *roaring_to_bitmap(struct roaring_bitmap_s *roaring)
+{
+	static uint32_t buf[ROARING_BUFFER_LEN]; /* scratch space */
+	struct bitmap *bitmap = bitmap_new();
+	struct roaring_uint32_iterator_s it;
+	uint32_t i, n;
+
+	roaring_init_iterator(roaring, &it);
+
+	while (1) {
+		n = roaring_read_uint32_iterator(&it, buf, ROARING_BUFFER_LEN);
+		for (i = 0; i < n; i++)
+			bitmap_set(bitmap, (uint32_t)i);
+
+		if (n < ROARING_BUFFER_LEN)
+			break;
+	}
+
+	roaring_free_uint32_iterator(&it);
+
+	return bitmap;
+}
+
 struct bitmap *compressed_as_bitmap(struct compressed_bitmap *bitmap)
 {
 	switch (bitmap->type) {
 	case TYPE_EWAH:
 		return ewah_to_bitmap(compressed_as_ewah(bitmap));
 	case TYPE_ROARING:
-
+		return roaring_to_bitmap(compressed_as_roaring(bitmap));
 	}
 	unknown_bitmap_type(bitmap->type);
 }
