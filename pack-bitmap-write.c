@@ -650,6 +650,32 @@ static int hashwrite_ewah_helper(void *f, const void *buf, size_t len)
 	return len;
 }
 
+/* TODO(@ttaylorr): could hook in closer to CRoaring? */
+static int roaring_serialize_to(struct hashfile *f,
+				 struct roaring_bitmap_s *bitmap)
+{
+	size_t expected_size, actual_size;
+	char *raw;
+	int ret;
+
+	expected_size = roaring_bitmap_portable_size_in_bytes(bitmap);
+	ALLOC_ARRAY(raw, expected_size);
+	actual_size = roaring_bitmap_portable_serialize(bitmap, raw);
+
+	if (expected_size != actual_size) {
+		ret = error(_("unexpected roaring size mismatch: "
+			      "(got: %"PRIuMAX", wanted: %"PRIuMAX")"),
+			    (uintmax_t)actual_size, (uintmax_t)expected_size);
+		goto done;
+	}
+
+	hashwrite(f, raw, expected_size);
+
+done:
+	free(raw);
+	return ret;
+}
+
 /**
  * Write the bitmap index to disk
  */
@@ -660,6 +686,10 @@ static inline void dump_bitmap(struct hashfile *f,
 	case TYPE_EWAH:
 		if (ewah_serialize_to(compressed_as_ewah(bitmap),
 				      hashwrite_ewah_helper, f) < 0)
+			die("Failed to write bitmap index");
+		return;
+	case TYPE_ROARING:
+		if (roaring_serialize_to(f, compressed_as_roaring(bitmap)) < 0)
 			die("Failed to write bitmap index");
 		return;
 	}
