@@ -1174,15 +1174,30 @@ static int add_commit_to_bitmap(struct bitmap_index *bitmap_git,
 				struct bitmap **base,
 				struct commit *commit)
 {
-	struct compressed_bitmap *or_with = bitmap_for_commit(bitmap_git, commit);
+	struct compressed_bitmap *or_with = bitmap_for_commit(bitmap_git,
+							      commit);
 
 	if (!or_with)
 		return 0;
 
-	if (!*base)
+	if (*base) {
+		/*
+		 * TODO(@ttaylorr): could use bitmap_or_compressed(), but we
+		 * don't have or want to set a bitmap position. For now let's
+		 * open-code the parts we do want.
+		 */
+		switch (or_with->type) {
+		case TYPE_EWAH:
+			bitmap_or_ewah(*base, compressed_as_ewah(or_with));
+			return 1;
+		case TYPE_ROARING:
+			bitmap_or_roaring(*base, compressed_as_roaring(or_with));
+			return 1;
+		}
+		unknown_bitmap_type(or_with->type);
+	} else {
 		*base = compressed_as_bitmap(or_with);
-	else
-		bitmap_or_ewah(*base, compressed_as_ewah(or_with));
+	}
 
 	return 1;
 }
