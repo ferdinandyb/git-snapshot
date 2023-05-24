@@ -120,3 +120,123 @@ void compressed_bitmap_set(struct compressed_bitmap *bitmap, size_t i)
 	}
 	unknown_bitmap_type(bitmap->type);
 }
+
+void init_compressed_bitmap_iterator(struct compressed_bitmap_iterator *it,
+				     struct compressed_bitmap *bitmap)
+{
+	switch (bitmap->type) {
+	case TYPE_EWAH:
+		init_ewah_iterator(it, compressed_as_ewah(bitmap));
+		return;
+	case TYPE_ROARING:
+		init_roaring_iterator(it, compressed_as_roaring(bitmap));
+		return;
+	}
+	unknown_bitmap_type(bitmap->type);
+}
+
+void init_ewah_iterator(struct compressed_bitmap_iterator *it,
+			struct ewah_bitmap *ewah)
+{
+	ewah_iterator_init(&it->u.ewah, ewah);
+	it->type = TYPE_EWAH;
+}
+
+void init_roaring_iterator(struct compressed_bitmap_iterator *it,
+			   struct roaring_bitmap_s *roaring)
+{
+	roaring_init_iterator(roaring, &it->u.roaring);
+	it->type = TYPE_ROARING;
+}
+
+/*
+ * TODO: could eliminate it->ewah.offset and store the bit position in pos
+ * entirely.
+ *
+ * Existing uses of `pos` would become `it->ewah.pos / BITS_IN_EWORD`,
+ * and `offset` would become `it->ewah.pos % BITS_IN_EWORD`.
+ */
+static int ewah_iterator_next_1(struct compressed_bitmap_iterator *it,
+				size_t *result)
+{
+	if (it->type != TYPE_EWAH)
+		BUG("expected EWAH bitmap, got: %d", it->type);
+
+	while (it->u.ewah.pointer < it->u.ewah.buffer_size) {
+		/*
+		 * If we want to read the first byte of a word, we need to get
+		 * the next eword_t from the bitmap.
+		 */
+		if (!it->ewah.offset) {
+			if (!ewah_iterator_next(&it->ewah.word, &it->u.ewah)) {
+				if (result)
+					*result = 0;
+				return 0;
+			}
+		}
+
+		/*
+		 * Process the next high bit of the current eword_t.
+		 */
+		for (; it->ewah.offset < BITS_IN_EWORD; it->ewah.offset++) {
+			if (!(it->ewah.word >> it->ewah.offset)) {
+				/* no more bits, advance to next word */
+				it->ewah.pos++;
+				it->ewah.offset = 0;
+				break;
+			}
+
+			it->ewah.offset += ewah_bit_ctz64(it->ewah.word >> it->ewah.offset);
+			if (it->ewah.word & ((eword_t)1 << it->ewah.offset)) {
+				if (result)
+					*result = it->ewah.pos * BITS_IN_EWORD + it->ewah.offset;
+				it->ewah.offset = (it->ewah.offset + 1) % BITS_IN_EWORD;
+
+				/*
+				 * Check if we ran out of bits, and reset the
+				 * iterator so that the next call to
+				 * ewah_iterator_next_1() fetches a new word.
+				 */
+				if (!it->ewah.offset)
+					it->ewah.pos++;
+				return 1;
+			}
+		}
+
+		/*
+		 * If we didn't return from the above loop, we either ran out of
+		 * bits, or all remaining bits were zeros. In either case, set
+		 * the iterator's state such that it grabs a new word on the
+		 * next iteration of the outer loop.
+		 */
+		it->ewah.pos++;
+		it->ewah.offset = 0;
+	}
+	return 0;
+}
+
+static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
+				   size_t *result)
+{
+	if (it->type != TYPE_ROARING)
+		BUG("expected roaring bitmap, got: %d", it->type);
+
+	roaring_advance_uint32_iterator(&it->u.roaring);
+	if (result)
+		*result = it->u.roaring.has_value
+			? (size_t)it->u.roaring.current_value : 0;
+
+	return it->u.roaring.has_value;
+}
+
+int compressed_bitmap_iterator_next(struct compressed_bitmap_iterator *it,
+				    size_t *result)
+{
+	switch (it->type) {
+	case TYPE_EWAH:
+		return ewah_iterator_next_1(it, result);
+	case TYPE_ROARING:
+		return roaring_iterator_next_1(it, result);
+	}
+	unknown_bitmap_type(it->type);
+}
