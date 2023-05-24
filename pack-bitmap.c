@@ -171,6 +171,32 @@ static struct compressed_bitmap *read_ewah_bitmap_1(struct bitmap_index *index)
 	return compress_ewah_bitmap(b);
 }
 
+static struct compressed_bitmap *read_roaring_bitmap_1(struct bitmap_index *index)
+{
+	struct roaring_bitmap_s *b;
+	const char *buf;
+	size_t sz, available;
+
+	buf = (const char *)index->map + index->map_pos; /* yuck */
+	available = index->map_size - index->map_pos;
+
+	sz = roaring_bitmap_portable_deserialize_size(buf, available);
+	if (!sz) {
+		error(_("could not locate roaring bitmap index (corrupted?)"));
+		return NULL;
+	}
+
+	b = roaring_bitmap_portable_deserialize_safe(buf, sz);
+	if (!b) {
+		error(_("failed to load roaring bitmap index (corrupted?)"));
+		return NULL;
+	}
+
+	index->map_size += sz;
+
+	return compress_roaring_bitmap(b);
+}
+
 /*
  * Read a bitmap from the current read position on the mmaped
  * index, and increase the read position accordingly
@@ -180,6 +206,8 @@ static struct compressed_bitmap *read_bitmap_1(struct bitmap_index *index)
 	switch (index->type) {
 	case TYPE_EWAH:
 		return read_ewah_bitmap_1(index);
+	case TYPE_ROARING:
+		return read_roaring_bitmap_1(index);
 	}
 	unknown_bitmap_type(index->type);
 }
@@ -339,11 +367,53 @@ static int load_bitmap_entries_v1_ewah(struct bitmap_index *index)
 	return 0;
 }
 
+/*
+ * TODO(@ttaylorr): the EWAH version of this function should in theory
+ * be able to work with both EWAH and non-EWAH bitmaps, since:
+ *
+ *   - read_bitmap_1() understands how to read a bitmap based on the
+ *     compression type used by that bitmap index.
+ *
+ *   - xor_bitmap is NULL when there is no XOR offset (which is
+ *     currently the case for Roaring bitmaps).
+ */
+static int load_bitmap_entries_v1_roaring(struct bitmap_index *index)
+{
+	uint32_t i;
+	for (i = 0; i < index->entry_count; i++) {
+		uint32_t commit_idx_pos;
+		int flags;
+		struct object_id oid;
+		struct compressed_bitmap *bitmap;
+
+		if (index->map_size - index->map_pos < 6)
+			return error(_("corrupt roaring bitmap: truncated header for entry %d"), i);
+
+		commit_idx_pos = read_be32(index->map, &index->map_pos);
+		read_u8(index->map, &index->map_pos); /* discard XOR offset */
+		flags = read_u8(index->map, &index->map_pos);
+
+		if (nth_bitmap_object_oid(index, &oid, commit_idx_pos) < 0)
+			return error(_("corrupt roaring bitmap: commit index %u out of range"),
+				     (unsigned)commit_idx_pos);
+
+		bitmap = read_bitmap_1(index);
+		if (!bitmap)
+			return -1;
+
+		store_bitmap(index, bitmap, &oid, NULL, flags);
+	}
+
+	return 0;
+}
+
 static int load_bitmap_entries_v1(struct bitmap_index *index)
 {
 	switch (index->type) {
 	case TYPE_EWAH:
 		return load_bitmap_entries_v1_ewah(index);
+	case TYPE_ROARING:
+		return load_bitmap_entries_v1_roaring(index);
 	}
 	unknown_bitmap_type(index->type);
 }
@@ -710,8 +780,8 @@ static int triplet_cmp(const void *commit_pos, const void *table_entry)
 }
 
 static uint32_t bitmap_bsearch_pos(struct bitmap_index *bitmap_git,
-			    struct object_id *oid,
-			    uint32_t *result)
+				   struct object_id *oid,
+				   uint32_t *result)
 {
 	int found;
 
@@ -730,8 +800,8 @@ static uint32_t bitmap_bsearch_pos(struct bitmap_index *bitmap_git,
  * failure.
  */
 static int bitmap_bsearch_triplet_by_pos(uint32_t commit_pos,
-				  struct bitmap_index *bitmap_git,
-				  struct bitmap_lookup_table_triplet *triplet)
+					 struct bitmap_index *bitmap_git,
+					 struct bitmap_lookup_table_triplet *triplet)
 {
 	unsigned char *p = bsearch(&commit_pos, bitmap_git->table_lookup, bitmap_git->entry_count,
 				   BITMAP_LOOKUP_TABLE_TRIPLET_WIDTH, triplet_cmp);
@@ -998,27 +1068,65 @@ static void show_commit(struct commit *commit UNUSED,
 {
 }
 
+#define ROARING_BUFFER_LEN (256)
+
+static void bitmap_or_roaring(struct bitmap *base,
+			      struct roaring_bitmap_s *partial)
+{
+	static uint32_t buf[ROARING_BUFFER_LEN]; /* scratch space */
+	struct roaring_uint32_iterator_s it;
+	uint32_t i, n;
+
+	roaring_init_iterator(partial, &it);
+
+	while (1) {
+		n = roaring_read_uint32_iterator(&it, buf, ROARING_BUFFER_LEN);
+		for (i = 0; i < n; i++)
+			bitmap_set(base, (uint32_t)i);
+
+		if (n < ROARING_BUFFER_LEN)
+			break;
+	}
+
+	roaring_free_uint32_iterator(&it);
+}
+
+static int bitmap_or_compressed(struct bitmap_index *bitmap_git,
+				struct bitmap *base,
+				struct compressed_bitmap *partial,
+				int bitmap_pos)
+{
+	if (partial) {
+		switch (partial->type) {
+		case TYPE_EWAH:
+			bitmap_or_ewah(base, compressed_as_ewah(partial));
+			return 0;
+		case TYPE_ROARING:
+			bitmap_or_roaring(base, compressed_as_roaring(partial));
+			return 0;
+		}
+
+		unknown_bitmap_type(partial->type);
+	}
+
+	bitmap_set(base, bitmap_pos);
+	return 1;
+}
+
 static int add_to_include_set(struct bitmap_index *bitmap_git,
 			      struct include_data *data,
 			      struct commit *commit,
 			      int bitmap_pos)
 {
-	struct compressed_bitmap *partial;
-
 	if (data->seen && bitmap_get(data->seen, bitmap_pos))
 		return 0;
 
 	if (bitmap_get(data->base, bitmap_pos))
 		return 0;
 
-	partial = bitmap_for_commit(bitmap_git, commit);
-	if (partial) {
-		bitmap_or_ewah(data->base, compressed_as_ewah(partial));
-		return 0;
-	}
-
-	bitmap_set(data->base, bitmap_pos);
-	return 1;
+	return bitmap_or_compressed(bitmap_git, data->base,
+				    bitmap_for_commit(bitmap_git, commit),
+				    bitmap_pos);
 }
 
 static int should_include(struct commit *commit, void *_data)
