@@ -140,6 +140,9 @@ void init_ewah_iterator(struct compressed_bitmap_iterator *it,
 {
 	ewah_iterator_init(&it->u.ewah, ewah);
 	it->type = TYPE_EWAH;
+	it->ewah.offset = 0;
+	it->ewah.pos = 0;
+	it->ewah.word = 0;
 }
 
 void init_roaring_iterator(struct compressed_bitmap_iterator *it,
@@ -147,6 +150,11 @@ void init_roaring_iterator(struct compressed_bitmap_iterator *it,
 {
 	roaring_init_iterator(roaring, &it->u.roaring);
 	it->type = TYPE_ROARING;
+
+	/* not necessary, but can't hurt ... */
+	it->ewah.offset = 0;
+	it->ewah.pos = 0;
+	it->ewah.word = 0;
 }
 
 /*
@@ -162,7 +170,7 @@ static int ewah_iterator_next_1(struct compressed_bitmap_iterator *it,
 	if (it->type != TYPE_EWAH)
 		BUG("expected EWAH bitmap, got: %d", it->type);
 
-	while (it->u.ewah.pointer < it->u.ewah.buffer_size) {
+	while (it->u.ewah.pointer < it->u.ewah.buffer_size || it->ewah.offset < BITS_IN_EWORD) {
 		/*
 		 * If we want to read the first byte of a word, we need to get
 		 * the next eword_t from the bitmap.
@@ -179,12 +187,9 @@ static int ewah_iterator_next_1(struct compressed_bitmap_iterator *it,
 		 * Process the next high bit of the current eword_t.
 		 */
 		for (; it->ewah.offset < BITS_IN_EWORD; it->ewah.offset++) {
-			if (!(it->ewah.word >> it->ewah.offset)) {
-				/* no more bits, advance to next word */
-				it->ewah.pos++;
-				it->ewah.offset = 0;
+			/* no more bits, advance to next word */
+			if (!(it->ewah.word >> it->ewah.offset))
 				break;
-			}
 
 			it->ewah.offset += ewah_bit_ctz64(it->ewah.word >> it->ewah.offset);
 			if (it->ewah.word & ((eword_t)1 << it->ewah.offset)) {

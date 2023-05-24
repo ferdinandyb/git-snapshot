@@ -2063,14 +2063,19 @@ static uint32_t count_object_type(struct bitmap_index *bitmap_git,
 	struct eindex *eindex = &bitmap_git->ext_index;
 
 	uint32_t i = 0, count = 0;
-	struct ewah_iterator it;
-	eword_t filter;
+	size_t pos;
+	struct compressed_bitmap_iterator it;
 
-	init_type_iterator(&it, bitmap_git, type);
+	init_type_iterator_1(&it, bitmap_git, type);
 
-	while (i < objects->word_alloc && ewah_iterator_next(&filter, &it)) {
-		eword_t word = objects->words[i++] & filter;
-		count += ewah_bit_popcount64(word);
+	while (compressed_bitmap_iterator_next(&it, &pos)) {
+		eword_t mask;
+		if (pos / BITS_IN_EWORD >= objects->word_alloc)
+			break;
+
+		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
+		if (objects->words[pos / BITS_IN_EWORD] & mask)
+			count++;
 	}
 
 	for (i = 0; i < eindex->count; ++i) {
