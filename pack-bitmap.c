@@ -1363,6 +1363,37 @@ static void init_type_iterator(struct ewah_iterator *it,
 	unknown_bitmap_type(bitmap_git->type);
 }
 
+/*
+ * TODO: transition all calls from init_type_iterator -> init_type_iterator_1,
+ * then drop init_type_iterator, and rename this function to that.
+ */
+static void init_type_iterator_1(struct compressed_bitmap_iterator *it,
+				 struct bitmap_index *bitmap_git,
+				 enum object_type type)
+{
+	struct compressed_bitmap *type_bitmap = NULL;
+
+	switch (type) {
+	case OBJ_COMMIT:
+		type_bitmap = bitmap_git->commits;
+		break;
+	case OBJ_TREE:
+		type_bitmap = bitmap_git->trees;
+		break;
+	case OBJ_BLOB:
+		type_bitmap = bitmap_git->blobs;
+		break;
+	case OBJ_TAG:
+		type_bitmap = bitmap_git->tags;
+		break;
+	default:
+		BUG("object type %d not stored by bitmap type index", type);
+		break;
+	}
+
+	init_compressed_bitmap_iterator(it, type_bitmap);
+}
+
 static void show_objects_for_type(
 	struct bitmap_index *bitmap_git,
 	enum object_type object_type,
