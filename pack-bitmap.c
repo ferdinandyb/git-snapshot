@@ -2084,6 +2084,8 @@ static uint32_t count_object_type(struct bitmap_index *bitmap_git,
 			count++;
 	}
 
+	release_compressed_bitmap_iterator(&it);
+
 	return count;
 }
 
