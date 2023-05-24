@@ -157,7 +157,7 @@ void init_roaring_iterator(struct compressed_bitmap_iterator *it,
 	it->ewah.word = 0;
 }
 
-void release_compressed_bitmap_iterator(struct compressed_bitmap_iterator *it)
+void free_compressed_bitmap_iterator(struct compressed_bitmap_iterator *it)
 {
 	if (!it)
 		return;
