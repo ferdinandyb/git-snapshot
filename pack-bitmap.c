@@ -1359,6 +1359,8 @@ static void init_type_iterator(struct ewah_iterator *it,
 	case TYPE_EWAH:
 		init_type_iterator_ewah(it, bitmap_git, type);
 		return;
+	default:
+		BUG("called init_type_iterator with non-EWAH bitmap");
 	}
 	unknown_bitmap_type(bitmap_git->type);
 }
