@@ -477,7 +477,8 @@ static void store_selected(struct bb_commit *ent, struct commit *commit)
 			compress_roaring_bitmap(bitmap_to_roaring(ent->bitmap));
 		break;
 	}
-	unknown_bitmap_type(writer.type);
+	if (!stored->bitmap)
+		unknown_bitmap_type(writer.type);
 
 	hash_pos = kh_put_oid_map(writer.bitmaps, commit->object.oid, &hash_ret);
 	if (hash_ret == 0)
