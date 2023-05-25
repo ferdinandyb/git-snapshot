@@ -1494,9 +1494,9 @@ static void filter_bitmap_exclude_type(struct bitmap_index *bitmap_git,
 {
 	struct eindex *eindex = &bitmap_git->ext_index;
 	struct bitmap *tips;
-	struct ewah_iterator it;
-	eword_t mask;
+	struct compressed_bitmap_iterator it;
 	uint32_t i;
+	size_t pos;
 
 	/*
 	 * The non-bitmap version of this filter never removes
@@ -1505,17 +1505,30 @@ static void filter_bitmap_exclude_type(struct bitmap_index *bitmap_git,
 	 */
 	tips = find_tip_objects(bitmap_git, tip_objects, type);
 
+	init_type_iterator_1(&it, bitmap_git, type);
+
 	/*
 	 * We can use the type-level bitmap for 'type' to work in whole
 	 * words for the objects that are actually in the bitmapped
 	 * packfile.
 	 */
-	for (i = 0, init_type_iterator(&it, bitmap_git, type);
-	     i < to_filter->word_alloc && ewah_iterator_next(&mask, &it);
-	     i++) {
-		if (i < tips->word_alloc)
-			mask &= ~tips->words[i];
-		to_filter->words[i] &= ~mask;
+	while (compressed_bitmap_iterator_next(&it, &pos)) {
+		eword_t mask;
+		if (pos / BITS_IN_EWORD > to_filter->word_alloc)
+			break;
+
+		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
+
+		/*
+		 * Objects that are explicitly mentioned in the tips bitmap
+		 * (even if they are of the excluded type) are kept
+		 * unconditionally.
+		 */
+		if ((pos / BITS_IN_EWORD < tips->word_alloc) &&
+		    (tips->words[pos / BITS_IN_EWORD] & mask))
+			continue;
+
+		to_filter->words[pos / BITS_IN_EWORD] &= ~mask;
 	}
 
 	/*
