@@ -186,13 +186,17 @@ static struct compressed_bitmap *read_roaring_bitmap_1(struct bitmap_index *inde
 		return NULL;
 	}
 
+#if 0
+	warning("next bitmap size is: %"PRIuMAX, (uintmax_t)sz);
+#endif
+
 	b = roaring_bitmap_portable_deserialize_safe(buf, sz);
 	if (!b) {
 		error(_("failed to load roaring bitmap index (corrupted?)"));
 		return NULL;
 	}
 
-	index->map_size += sz;
+	index->map_pos += sz;
 
 	return compress_roaring_bitmap(b);
 }
@@ -2175,9 +2179,14 @@ void test_bitmap_walk(struct rev_info *revs)
 	bm = bitmap_for_commit(bitmap_git, (struct commit *)root);
 
 	if (bm) {
-		fprintf_ln(stderr, "Found bitmap for '%s'. %d bits / %08x checksum",
-			oid_to_hex(&root->oid), (int)compressed_as_ewah(bm)->bit_size,
-			ewah_checksum(compressed_as_ewah(bm)));
+		fprintf(stderr, "Found bitmap for '%s'.",
+			oid_to_hex(&root->oid));
+		if (bitmap_git->type == TYPE_EWAH)
+			fprintf_ln(stderr, "%d bits / %08x checksum",
+				   (int)compressed_as_ewah(bm)->bit_size,
+				   ewah_checksum(compressed_as_ewah(bm)));
+		else
+			fprintf(stderr, "\n");
 
 		result = compressed_as_bitmap(bm);
 	}

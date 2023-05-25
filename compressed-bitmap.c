@@ -104,13 +104,11 @@ static struct bitmap *roaring_to_bitmap(struct roaring_bitmap_s *roaring)
 	while (1) {
 		n = roaring_read_uint32_iterator(&it, buf, ROARING_BUFFER_LEN);
 		for (i = 0; i < n; i++)
-			bitmap_set(bitmap, (uint32_t)i);
+			bitmap_set(bitmap, buf[i]);
 
 		if (n < ROARING_BUFFER_LEN)
 			break;
 	}
-
-	roaring_free_uint32_iterator(&it);
 
 	return bitmap;
 }

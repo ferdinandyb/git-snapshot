@@ -152,46 +152,56 @@ static uint32_t find_object_pos(const struct object_id *oid, int *found)
 	return oe_in_pack_pos(writer.to_pack, entry);
 }
 
-static void compute_xor_offsets(void)
+static struct ewah_bitmap *find_best_xor_offset(struct bitmapped_commit *stored,
+						int next)
 {
 	static const int MAX_XOR_OFFSET_SEARCH = 10;
 
-	int i, next = 0;
+	int i, best_offset = 0;
+	struct ewah_bitmap *best_bitmap = compressed_as_ewah(stored->bitmap);
+	struct ewah_bitmap *test_xor;
 
-	if (writer.type != TYPE_EWAH)
-		return;
+	for (i = 1; i <= MAX_XOR_OFFSET_SEARCH; ++i) {
+		int curr = next - i;
+
+		if (curr < 0)
+			break;
+
+		test_xor = ewah_pool_new();
+		ewah_xor(compressed_as_ewah(writer.selected[curr].bitmap),
+			 compressed_as_ewah(stored->bitmap),
+			 test_xor);
+
+		if (test_xor->buffer_size < best_bitmap->buffer_size) {
+			if (best_bitmap != compressed_as_ewah(stored->bitmap))
+				ewah_pool_free(best_bitmap);
+
+			best_bitmap = test_xor;
+			best_offset = i;
+		} else {
+			ewah_pool_free(test_xor);
+		}
+	}
+
+	stored->xor_offset = best_offset;
+	return best_bitmap;
+}
+
+static void compute_xor_offsets(void)
+{
+	int next = 0;
 
 	while (next < writer.selected_nr) {
 		struct bitmapped_commit *stored = &writer.selected[next];
 
-		int best_offset = 0;
-		struct ewah_bitmap *best_bitmap = compressed_as_ewah(stored->bitmap);
-		struct ewah_bitmap *test_xor;
-
-		for (i = 1; i <= MAX_XOR_OFFSET_SEARCH; ++i) {
-			int curr = next - i;
-
-			if (curr < 0)
-				break;
-
-			test_xor = ewah_pool_new();
-			ewah_xor(compressed_as_ewah(writer.selected[curr].bitmap),
-				 compressed_as_ewah(stored->bitmap),
-				 test_xor);
-
-			if (test_xor->buffer_size < best_bitmap->buffer_size) {
-				if (best_bitmap != compressed_as_ewah(stored->bitmap))
-					ewah_pool_free(best_bitmap);
-
-				best_bitmap = test_xor;
-				best_offset = i;
-			} else {
-				ewah_pool_free(test_xor);
-			}
+		if (writer.type == TYPE_EWAH) {
+			struct ewah_bitmap *best;
+			best = find_best_xor_offset(stored, next);
+			stored->write_as = compress_ewah_bitmap(best);
+		} else {
+			stored->xor_offset = 0;
+			stored->write_as = stored->bitmap;
 		}
-
-		stored->xor_offset = best_offset;
-		stored->write_as = compress_ewah_bitmap(best_bitmap);
 
 		next++;
 	}
@@ -685,6 +695,8 @@ static int roaring_serialize_to(struct hashfile *f,
 		goto done;
 	}
 
+	warning("writing bitmap with size %"PRIuMAX, (uintmax_t)actual_size);
+
 	hashwrite(f, raw, expected_size);
 
 done:
@@ -698,6 +710,7 @@ done:
 static inline void dump_bitmap(struct hashfile *f,
 			       struct compressed_bitmap *bitmap)
 {
+	warning("dumping bitmap: %p", bitmap);
 	switch (bitmap->type) {
 	case TYPE_EWAH:
 		if (ewah_serialize_to(compressed_as_ewah(bitmap),
@@ -731,6 +744,7 @@ static void write_selected_commits_v1(struct hashfile *f,
 			offsets[i] = hashfile_total(f);
 
 		hashwrite_be32(f, commit_positions[i]);
+		warning("dumping %d -> %u", i, commit_positions[i]);
 		if (writer.type != TYPE_EWAH && stored->xor_offset)
 			BUG("unexpected non-zero xor_offset for commit %s: %d",
 			    oid_to_hex(&stored->commit->object.oid),
