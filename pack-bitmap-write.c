@@ -152,11 +152,12 @@ static uint32_t find_object_pos(const struct object_id *oid, int *found)
 	return oe_in_pack_pos(writer.to_pack, entry);
 }
 
-static struct ewah_bitmap *find_best_xor_offset(struct bitmapped_commit *stored,
-						int next)
-{
-	static const int MAX_XOR_OFFSET_SEARCH = 10;
+static const int MAX_XOR_OFFSET_SEARCH = 10;
 
+static struct compressed_bitmap *find_best_xor_offset_ewah(struct bitmapped_commit *stored,
+							   int *xor_offset,
+							   int next)
+{
 	int i, best_offset = 0;
 	struct ewah_bitmap *best_bitmap = compressed_as_ewah(stored->bitmap);
 	struct ewah_bitmap *test_xor;
@@ -183,8 +184,31 @@ static struct ewah_bitmap *find_best_xor_offset(struct bitmapped_commit *stored,
 		}
 	}
 
-	stored->xor_offset = best_offset;
-	return best_bitmap;
+	if (xor_offset)
+		*xor_offset = best_offset;
+	return compress_ewah_bitmap(best_bitmap);
+}
+
+static struct compressed_bitmap *find_best_xor_offset_roaring(struct bitmapped_commit *stored,
+							      int *xor_offset,
+							      int next)
+{
+	if (xor_offset)
+		*xor_offset = 0;
+	return stored->bitmap;
+}
+
+static struct compressed_bitmap *find_best_xor_offset(struct bitmapped_commit *stored,
+						      int *xor_offset,
+						      int next)
+{
+	switch (writer.type) {
+	case TYPE_EWAH:
+		return find_best_xor_offset_ewah(stored, xor_offset, next);
+	case TYPE_ROARING:
+		return find_best_xor_offset_roaring(stored, xor_offset, next);
+	}
+	unknown_bitmap_type(writer.type);
 }
 
 static void compute_xor_offsets(void)
@@ -193,17 +217,9 @@ static void compute_xor_offsets(void)
 
 	while (next < writer.selected_nr) {
 		struct bitmapped_commit *stored = &writer.selected[next];
-
-		if (writer.type == TYPE_EWAH) {
-			struct ewah_bitmap *best;
-			best = find_best_xor_offset(stored, next);
-			stored->write_as = compress_ewah_bitmap(best);
-		} else {
-			stored->xor_offset = 0;
-			stored->write_as = stored->bitmap;
-		}
-
-		next++;
+		stored->write_as = find_best_xor_offset(stored,
+							&stored->xor_offset,
+							next++);
 	}
 }
 
