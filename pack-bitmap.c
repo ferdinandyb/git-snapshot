@@ -594,11 +594,19 @@ static int load_reverse_index(struct repository *r, struct bitmap_index *bitmap_
 
 static int load_bitmap(struct repository *r, struct bitmap_index *bitmap_git)
 {
+	char *bitmap_type;
+
 	assert(bitmap_git->map);
 
 	bitmap_git->bitmaps = kh_init_oid_map();
 	bitmap_git->ext_index.positions = kh_init_oid_pos();
-	bitmap_git->type = TYPE_EWAH; /* TODO */
+
+	/* TODO: should read from the .bitmap file itself, obviously */
+	bitmap_type = getenv("GIT_BITMAP_TYPE");
+	if (bitmap_type)
+		bitmap_git->type = bitmap_type_from_name(bitmap_type);
+	else
+		bitmap_git->type = TYPE_EWAH;
 
 	if (load_reverse_index(r, bitmap_git))
 		goto failed;

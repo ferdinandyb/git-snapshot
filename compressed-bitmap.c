@@ -141,6 +141,35 @@ void compressed_bitmap_set(struct compressed_bitmap *bitmap, size_t i)
 	unknown_bitmap_type(bitmap->type);
 }
 
+struct roaring_bitmap_s *bitmap_to_roaring(struct bitmap *bitmap)
+{
+	struct roaring_bitmap_s *roaring;
+	struct roaring_bulk_context_s ctx = { 0 };
+	size_t pos, offset;
+
+	roaring = roaring_bitmap_create();
+	if (!roaring)
+		return NULL;
+
+	for (pos = 0; pos < bitmap->word_alloc; pos++) {
+		eword_t word = bitmap->words[pos];
+
+		for (offset = 0; offset < BITS_IN_EWORD; offset++) {
+			if (!(word >> offset))
+				continue;
+
+			offset += ewah_bit_ctz64(word >> offset);
+			if (word & ((eword_t)1 << offset))
+				roaring_bitmap_add_bulk(roaring, &ctx,
+							pos + offset);
+		}
+	}
+
+	roaring_bitmap_run_optimize(roaring);
+
+	return roaring;
+}
+
 void init_compressed_bitmap_iterator(struct compressed_bitmap_iterator *it,
 				     struct compressed_bitmap *bitmap)
 {

@@ -468,7 +468,16 @@ static void store_selected(struct bb_commit *ent, struct commit *commit)
 	khiter_t hash_pos;
 	int hash_ret;
 
-	stored->bitmap = compress_ewah_bitmap(bitmap_to_ewah(ent->bitmap));
+	switch (writer.type) {
+	case TYPE_EWAH:
+		stored->bitmap = compress_ewah_bitmap(bitmap_to_ewah(ent->bitmap));
+		break;
+	case TYPE_ROARING:
+		stored->bitmap =
+			compress_roaring_bitmap(bitmap_to_roaring(ent->bitmap));
+		break;
+	}
+	unknown_bitmap_type(writer.type);
 
 	hash_pos = kh_put_oid_map(writer.bitmaps, commit->object.oid, &hash_ret);
 	if (hash_ret == 0)
@@ -658,7 +667,7 @@ static int hashwrite_ewah_helper(void *f, const void *buf, size_t len)
 
 /* TODO(@ttaylorr): could hook in closer to CRoaring? */
 static int roaring_serialize_to(struct hashfile *f,
-				 struct roaring_bitmap_s *bitmap)
+				struct roaring_bitmap_s *bitmap)
 {
 	size_t expected_size, actual_size;
 	char *raw;
@@ -721,6 +730,10 @@ static void write_selected_commits_v1(struct hashfile *f,
 			offsets[i] = hashfile_total(f);
 
 		hashwrite_be32(f, commit_positions[i]);
+		if (writer.type != TYPE_EWAH && stored->xor_offset)
+			BUG("unexpected non-zero xor_offset for commit %s: %d",
+			    oid_to_hex(&stored->commit->object.oid),
+			    stored->xor_offset);
 		hashwrite_u8(f, stored->xor_offset);
 		hashwrite_u8(f, stored->flags);
 

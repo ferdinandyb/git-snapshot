@@ -35,6 +35,8 @@ struct bitmap *compressed_as_bitmap(struct compressed_bitmap *bitmap);
 
 void compressed_bitmap_set(struct compressed_bitmap *bitmap, size_t i);
 
+struct roaring_bitmap_s *bitmap_to_roaring(struct bitmap *bitmap);
+
 struct compressed_bitmap_iterator {
 	union {
 		struct ewah_iterator ewah;
