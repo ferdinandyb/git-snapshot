@@ -1062,7 +1062,7 @@ static void bitmap_or_roaring(struct bitmap *base,
 	while (1) {
 		n = roaring_read_uint32_iterator(&it, buf, ROARING_BUFFER_LEN);
 		for (i = 0; i < n; i++)
-			bitmap_set(base, (uint32_t)i);
+			bitmap_set(base, (uint32_t)buf[i]);
 
 		if (n < ROARING_BUFFER_LEN)
 			break;
