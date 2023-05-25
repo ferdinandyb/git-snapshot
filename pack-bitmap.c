@@ -1067,8 +1067,6 @@ static void bitmap_or_roaring(struct bitmap *base,
 		if (n < ROARING_BUFFER_LEN)
 			break;
 	}
-
-	roaring_free_uint32_iterator(&it);
 }
 
 static int bitmap_or_compressed(struct bitmap_index *bitmap_git,
@@ -2019,8 +2017,6 @@ static uint32_t count_object_type(struct bitmap_index *bitmap_git,
 			count++;
 	}
 
-	free_compressed_bitmap_iterator(&it);
-
 	return count;
 }
 
@@ -2267,7 +2263,6 @@ int rebuild_bitmap(const uint32_t *reposition,
 			bitmap_set(dest, bit_pos - 1);
 		else {
 			/* can't reuse, we don't have the object */
-			free_compressed_bitmap_iterator(&it);
 			return -1;
 		}
 	}

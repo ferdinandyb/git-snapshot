@@ -215,20 +215,6 @@ void init_roaring_iterator(struct compressed_bitmap_iterator *it,
 	it->ewah.word = 0;
 }
 
-void free_compressed_bitmap_iterator(struct compressed_bitmap_iterator *it)
-{
-	if (!it)
-		return;
-
-	switch (it->type) {
-	case TYPE_EWAH:
-		return;
-	case TYPE_ROARING:
-		roaring_free_uint32_iterator(&it->u.roaring);
-		return;
-	}
-}
-
 /*
  * TODO: could eliminate it->ewah.offset and store the bit position in pos
  * entirely.

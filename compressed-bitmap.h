@@ -60,8 +60,6 @@ void init_ewah_iterator(struct compressed_bitmap_iterator *it,
 void init_roaring_iterator(struct compressed_bitmap_iterator *it,
 			   struct roaring_bitmap_s *roaring);
 
-void free_compressed_bitmap_iterator(struct compressed_bitmap_iterator *it);
-
 int compressed_bitmap_iterator_next(struct compressed_bitmap_iterator *it,
 				    size_t *result);
 
