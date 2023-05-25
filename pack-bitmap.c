@@ -1324,54 +1324,9 @@ static void show_extended_objects(struct bitmap_index *bitmap_git,
 	}
 }
 
-static void init_type_iterator_ewah(struct ewah_iterator *it,
-				    struct bitmap_index *bitmap_git,
-				    enum object_type type)
-{
-	switch (type) {
-	case OBJ_COMMIT:
-		ewah_iterator_init(it, &bitmap_git->commits->u.ewah);
-		break;
-
-	case OBJ_TREE:
-		ewah_iterator_init(it, &bitmap_git->trees->u.ewah);
-		break;
-
-	case OBJ_BLOB:
-		ewah_iterator_init(it, &bitmap_git->blobs->u.ewah);
-		break;
-
-	case OBJ_TAG:
-		ewah_iterator_init(it, &bitmap_git->tags->u.ewah);
-		break;
-
-	default:
-		BUG("object type %d not stored by bitmap type index", type);
-		break;
-	}
-}
-
-static void init_type_iterator(struct ewah_iterator *it,
+static void init_type_iterator(struct compressed_bitmap_iterator *it,
 			       struct bitmap_index *bitmap_git,
 			       enum object_type type)
-{
-	switch (bitmap_git->type) {
-	case TYPE_EWAH:
-		init_type_iterator_ewah(it, bitmap_git, type);
-		return;
-	default:
-		BUG("called init_type_iterator with non-EWAH bitmap");
-	}
-	unknown_bitmap_type(bitmap_git->type);
-}
-
-/*
- * TODO: transition all calls from init_type_iterator -> init_type_iterator_1,
- * then drop init_type_iterator, and rename this function to that.
- */
-static void init_type_iterator_1(struct compressed_bitmap_iterator *it,
-				 struct bitmap_index *bitmap_git,
-				 enum object_type type)
 {
 	struct compressed_bitmap *type_bitmap = NULL;
 
@@ -1404,7 +1359,7 @@ static void show_objects_for_type(struct bitmap_index *bitmap_git,
 	struct compressed_bitmap_iterator it;
 	size_t pos;
 
-	init_type_iterator_1(&it, bitmap_git, object_type);
+	init_type_iterator(&it, bitmap_git, object_type);
 
 	while (compressed_bitmap_iterator_next(&it, &pos)) {
 		eword_t mask;
@@ -1505,7 +1460,7 @@ static void filter_bitmap_exclude_type(struct bitmap_index *bitmap_git,
 	 */
 	tips = find_tip_objects(bitmap_git, tip_objects, type);
 
-	init_type_iterator_1(&it, bitmap_git, type);
+	init_type_iterator(&it, bitmap_git, type);
 
 	/*
 	 * We can use the type-level bitmap for 'type' to work in whole
@@ -1607,7 +1562,7 @@ static void filter_bitmap_blob_limit(struct bitmap_index *bitmap_git,
 
 	tips = find_tip_objects(bitmap_git, tip_objects, OBJ_BLOB);
 
-	init_type_iterator_1(&it, bitmap_git, OBJ_BLOB);
+	init_type_iterator(&it, bitmap_git, OBJ_BLOB);
 
 	while (compressed_bitmap_iterator_next(&it, &pos)) {
 		eword_t mask;
@@ -2066,7 +2021,7 @@ static uint32_t count_object_type(struct bitmap_index *bitmap_git,
 	size_t pos;
 	struct compressed_bitmap_iterator it;
 
-	init_type_iterator_1(&it, bitmap_git, type);
+	init_type_iterator(&it, bitmap_git, type);
 
 	while (compressed_bitmap_iterator_next(&it, &pos)) {
 		eword_t mask;
@@ -2428,7 +2383,7 @@ static off_t get_disk_usage_for_type(struct bitmap_index *bitmap_git,
 	struct compressed_bitmap_iterator it;
 	size_t pos;
 
-	init_type_iterator_1(&it, bitmap_git, object_type);
+	init_type_iterator(&it, bitmap_git, object_type);
 
 	while (compressed_bitmap_iterator_next(&it, &pos)) {
 		eword_t mask;
