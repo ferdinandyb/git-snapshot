@@ -186,10 +186,6 @@ static struct compressed_bitmap *read_roaring_bitmap_1(struct bitmap_index *inde
 		return NULL;
 	}
 
-#if 0
-	warning("next bitmap size is: %"PRIuMAX, (uintmax_t)sz);
-#endif
-
 	b = roaring_bitmap_portable_deserialize_safe(buf, sz);
 	if (!b) {
 		error(_("failed to load roaring bitmap index (corrupted?)"));

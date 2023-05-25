@@ -695,8 +695,6 @@ static int roaring_serialize_to(struct hashfile *f,
 		goto done;
 	}
 
-	warning("writing bitmap with size %"PRIuMAX, (uintmax_t)actual_size);
-
 	hashwrite(f, raw, expected_size);
 
 done:
@@ -710,7 +708,6 @@ done:
 static inline void dump_bitmap(struct hashfile *f,
 			       struct compressed_bitmap *bitmap)
 {
-	warning("dumping bitmap: %p", bitmap);
 	switch (bitmap->type) {
 	case TYPE_EWAH:
 		if (ewah_serialize_to(compressed_as_ewah(bitmap),
@@ -744,7 +741,6 @@ static void write_selected_commits_v1(struct hashfile *f,
 			offsets[i] = hashfile_total(f);
 
 		hashwrite_be32(f, commit_positions[i]);
-		warning("dumping %d -> %u", i, commit_positions[i]);
 		if (writer.type != TYPE_EWAH && stored->xor_offset)
 			BUG("unexpected non-zero xor_offset for commit %s: %d",
 			    oid_to_hex(&stored->commit->object.oid),

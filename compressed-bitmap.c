@@ -159,7 +159,7 @@ struct roaring_bitmap_s *bitmap_to_roaring(struct bitmap *bitmap)
 			offset += ewah_bit_ctz64(word >> offset);
 			if (word & ((eword_t)1 << offset))
 				roaring_bitmap_add_bulk(roaring, &ctx,
-							pos + offset);
+							(pos * BITS_IN_EWORD) + offset);
 		}
 	}
 
