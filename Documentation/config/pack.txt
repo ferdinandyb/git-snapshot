@@ -171,6 +171,11 @@ pack.writeBitmapLookupTable::
 	beneficial in repositories that have relatively large bitmap
 	indexes. Defaults to false.
 
+pack.writeBitmapCompressionScheme::
+	When writing bitmaps, selects which bitmap compression scheme Git will
+	use. Possible values are "ewah" (representing EWAH compression) and
+	"roaring" (representing Roaring+Run). Defaults to "ewah".
+
 pack.readReverseIndex::
 	When true, git will read any .rev file(s) that may be available
 	(see: linkgit:gitformat-pack[5]). When false, the reverse index

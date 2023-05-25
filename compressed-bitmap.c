@@ -30,6 +30,17 @@ struct compressed_bitmap *compress_roaring_bitmap(struct roaring_bitmap_s *roari
 	return cb;
 }
 
+struct compressed_bitmap *new_compressed_bitmap(enum compressed_bitmap_type type)
+{
+	switch (type) {
+	case TYPE_EWAH:
+		return new_compressed_ewah();
+	case TYPE_ROARING:
+		return new_compressed_roaring();
+	}
+	unknown_bitmap_type(type);
+}
+
 struct compressed_bitmap *new_compressed_ewah(void)
 {
 	return compress_ewah_bitmap(ewah_new());

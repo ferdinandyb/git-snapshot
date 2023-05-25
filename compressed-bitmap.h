@@ -21,6 +21,7 @@ struct compressed_bitmap {
 
 struct compressed_bitmap *compress_ewah_bitmap(struct ewah_bitmap *ewah);
 struct compressed_bitmap *compress_roaring_bitmap(struct roaring_bitmap_s *roaring);
+struct compressed_bitmap *new_compressed_bitmap(enum compressed_bitmap_type type);
 struct compressed_bitmap *new_compressed_ewah(void);
 struct compressed_bitmap *new_compressed_roaring(void);
 
