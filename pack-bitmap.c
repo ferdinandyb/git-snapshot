@@ -2427,50 +2427,43 @@ static off_t get_disk_usage_for_type(struct bitmap_index *bitmap_git,
 {
 	struct bitmap *result = bitmap_git->result;
 	off_t total = 0;
-	struct ewah_iterator it;
-	eword_t filter;
-	size_t i;
+	struct compressed_bitmap_iterator it;
+	size_t pos;
 
-	init_type_iterator(&it, bitmap_git, object_type);
-	for (i = 0; i < result->word_alloc &&
-			ewah_iterator_next(&filter, &it); i++) {
-		eword_t word = result->words[i] & filter;
-		size_t base = (i * BITS_IN_EWORD);
-		unsigned offset;
+	init_type_iterator_1(&it, bitmap_git, object_type);
 
-		if (!word)
+	while (compressed_bitmap_iterator_next(&it, &pos)) {
+		eword_t mask;
+		if (pos / BITS_IN_EWORD >= result->word_alloc)
+			break;
+
+		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
+
+		if (!(result->words[pos / BITS_IN_EWORD] & mask))
 			continue;
 
-		for (offset = 0; offset < BITS_IN_EWORD; offset++) {
-			if ((word >> offset) == 0)
-				break;
+		if (bitmap_is_midx(bitmap_git)) {
+			uint32_t pack_pos;
+			uint32_t midx_pos = pack_pos_to_midx(bitmap_git->midx, pos);
+			off_t offset = nth_midxed_offset(bitmap_git->midx, midx_pos);
 
-			offset += ewah_bit_ctz64(word >> offset);
+			uint32_t pack_id = nth_midxed_pack_int_id(bitmap_git->midx, midx_pos);
+			struct packed_git *pack = bitmap_git->midx->packs[pack_id];
 
-			if (bitmap_is_midx(bitmap_git)) {
-				uint32_t pack_pos;
-				uint32_t midx_pos = pack_pos_to_midx(bitmap_git->midx, base + offset);
-				off_t offset = nth_midxed_offset(bitmap_git->midx, midx_pos);
+			if (offset_to_pack_pos(pack, offset, &pack_pos) < 0) {
+				struct object_id oid;
+				nth_midxed_object_oid(&oid, bitmap_git->midx, midx_pos);
 
-				uint32_t pack_id = nth_midxed_pack_int_id(bitmap_git->midx, midx_pos);
-				struct packed_git *pack = bitmap_git->midx->packs[pack_id];
-
-				if (offset_to_pack_pos(pack, offset, &pack_pos) < 0) {
-					struct object_id oid;
-					nth_midxed_object_oid(&oid, bitmap_git->midx, midx_pos);
-
-					die(_("could not find '%s' in pack '%s' at offset %"PRIuMAX),
-					    oid_to_hex(&oid),
-					    pack->pack_name,
-					    (uintmax_t)offset);
-				}
-
-				total += pack_pos_to_offset(pack, pack_pos + 1) - offset;
-			} else {
-				size_t pos = base + offset;
-				total += pack_pos_to_offset(bitmap_git->pack, pos + 1) -
-					 pack_pos_to_offset(bitmap_git->pack, pos);
+				die(_("could not find '%s' in pack '%s' at offset %"PRIuMAX),
+				    oid_to_hex(&oid),
+				    pack->pack_name,
+				    (uintmax_t)offset);
 			}
+
+			total += pack_pos_to_offset(pack, pack_pos + 1) - offset;
+		} else {
+			total += pack_pos_to_offset(bitmap_git->pack, pos + 1) -
+				pack_pos_to_offset(bitmap_git->pack, pos);
 		}
 	}
 
