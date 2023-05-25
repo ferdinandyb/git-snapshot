@@ -32,6 +32,8 @@ struct bitmapped_commit {
 };
 
 struct bitmap_writer {
+	enum compressed_bitmap_type type;
+
 	struct compressed_bitmap *commits;
 	struct compressed_bitmap *trees;
 	struct compressed_bitmap *blobs;
@@ -155,6 +157,9 @@ static void compute_xor_offsets(void)
 	static const int MAX_XOR_OFFSET_SEARCH = 10;
 
 	int i, next = 0;
+
+	if (writer.type != TYPE_EWAH)
+		return;
 
 	while (next < writer.selected_nr) {
 		struct bitmapped_commit *stored = &writer.selected[next];
@@ -485,6 +490,7 @@ int bitmap_writer_build(struct packing_data *to_pack)
 
 	writer.bitmaps = kh_init_oid_map();
 	writer.to_pack = to_pack;
+	writer.type = to_pack->bitmap_type;
 
 	if (writer.show_progress)
 		writer.progress = start_progress("Building bitmaps", writer.selected_nr);

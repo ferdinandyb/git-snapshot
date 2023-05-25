@@ -134,6 +134,7 @@ void oe_map_new_pack(struct packing_data *pack)
 /* assume pdata is already zero'd by caller */
 void prepare_packing_data(struct repository *r, struct packing_data *pdata)
 {
+	char *bitmap_type = NULL;
 	pdata->repo = r;
 
 	if (git_env_bool("GIT_TEST_FULL_IN_PACK_ARRAY", 0)) {
@@ -143,6 +144,20 @@ void prepare_packing_data(struct repository *r, struct packing_data *pdata)
 		 */
 	} else {
 		prepare_in_pack_by_idx(pdata);
+	}
+
+	if (repo_config_get_string(pdata->repo,
+				    "pack.writebitmapcompressionscheme",
+				    &bitmap_type)) {
+		pdata->bitmap_type = TYPE_EWAH;
+	} else if (!strcmp(bitmap_type, "ewah")) {
+		pdata->bitmap_type = TYPE_EWAH;
+	} else if (!strcmp(bitmap_type, "roaring")) {
+		pdata->bitmap_type = TYPE_ROARING;
+	} else {
+		warning("unknown bitmap compression scheme: '%s'",
+			bitmap_type);
+		pdata->bitmap_type = TYPE_EWAH;
 	}
 
 	pdata->oe_size_limit = git_env_ulong("GIT_TEST_OE_SIZE",

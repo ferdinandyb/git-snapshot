@@ -4,6 +4,7 @@
 #include "object-store.h"
 #include "thread-utils.h"
 #include "pack.h"
+#include "compressed-bitmap.h"
 
 struct repository;
 
@@ -166,6 +167,11 @@ struct packing_data {
 	 * written out in lexicographic (index) order.
 	 */
 	uint32_t *cruft_mtime;
+
+	/*
+	 * Used when writing reachability bitmaps.
+	 */
+	enum compressed_bitmap_type bitmap_type;
 };
 
 void prepare_packing_data(struct repository *r, struct packing_data *pdata);
