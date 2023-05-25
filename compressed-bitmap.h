@@ -9,6 +9,8 @@ enum compressed_bitmap_type {
 	TYPE_ROARING,
 };
 
+enum compressed_bitmap_type bitmap_type_from_name(const char *name);
+
 void NORETURN unknown_bitmap_type(enum compressed_bitmap_type type);
 
 struct compressed_bitmap {

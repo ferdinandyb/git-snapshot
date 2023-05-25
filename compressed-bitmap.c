@@ -6,6 +6,15 @@ void NORETURN unknown_bitmap_type(enum compressed_bitmap_type type)
 	BUG("unknown compressed bitmap type: %d", type);
 }
 
+enum compressed_bitmap_type bitmap_type_from_name(const char *name)
+{
+	if (!strcmp(name, "ewah"))
+		return TYPE_EWAH;
+	else if (!strcmp(name, "roaring"))
+		return TYPE_ROARING;
+	die("unknown bitmap type: '%s'", name);
+}
+
 struct compressed_bitmap *compress_ewah_bitmap(struct ewah_bitmap *ewah)
 {
 	struct compressed_bitmap *cb;

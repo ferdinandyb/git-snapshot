@@ -148,17 +148,10 @@ void prepare_packing_data(struct repository *r, struct packing_data *pdata)
 
 	if (repo_config_get_string(pdata->repo,
 				    "pack.writebitmapcompressionscheme",
-				    &bitmap_type)) {
+				    &bitmap_type))
 		pdata->bitmap_type = TYPE_EWAH;
-	} else if (!strcmp(bitmap_type, "ewah")) {
-		pdata->bitmap_type = TYPE_EWAH;
-	} else if (!strcmp(bitmap_type, "roaring")) {
-		pdata->bitmap_type = TYPE_ROARING;
-	} else {
-		warning("unknown bitmap compression scheme: '%s'",
-			bitmap_type);
-		pdata->bitmap_type = TYPE_EWAH;
-	}
+	else
+		pdata->bitmap_type = bitmap_type_from_name(bitmap_type);
 
 	pdata->oe_size_limit = git_env_ulong("GIT_TEST_OE_SIZE",
 					     1U << OE_SIZE_BITS);
