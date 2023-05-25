@@ -66,10 +66,10 @@ void bitmap_writer_build_type_index(struct packing_data *to_pack,
 {
 	uint32_t i;
 
-	writer.commits = new_compressed_ewah();
-	writer.trees = new_compressed_ewah();
-	writer.blobs = new_compressed_ewah();
-	writer.tags = new_compressed_ewah();
+	writer.commits = new_compressed_bitmap(to_pack->bitmap_type);
+	writer.trees = new_compressed_bitmap(to_pack->bitmap_type);
+	writer.blobs = new_compressed_bitmap(to_pack->bitmap_type);
+	writer.tags = new_compressed_bitmap(to_pack->bitmap_type);
 	ALLOC_ARRAY(to_pack->in_pack_pos, to_pack->nr_objects);
 
 	for (i = 0; i < index_nr; ++i) {
