@@ -15,6 +15,17 @@ enum compressed_bitmap_type bitmap_type_from_name(const char *name)
 	die("unknown bitmap type: '%s'", name);
 }
 
+const char *bitmap_type_name(const enum compressed_bitmap_type type)
+{
+	switch (type) {
+	case TYPE_EWAH:
+		return "ewah";
+	case TYPE_ROARING:
+		return "roaring";
+	}
+	unknown_bitmap_type(type);
+}
+
 struct compressed_bitmap *compress_ewah_bitmap(struct ewah_bitmap *ewah)
 {
 	struct compressed_bitmap *cb;

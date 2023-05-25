@@ -10,6 +10,7 @@ enum compressed_bitmap_type {
 };
 
 enum compressed_bitmap_type bitmap_type_from_name(const char *name);
+const char *bitmap_type_name(const enum compressed_bitmap_type type);
 
 void NORETURN unknown_bitmap_type(enum compressed_bitmap_type type);
 

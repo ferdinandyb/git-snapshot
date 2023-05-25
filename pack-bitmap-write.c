@@ -193,9 +193,38 @@ static struct compressed_bitmap *find_best_xor_offset_roaring(struct bitmapped_c
 							      int *xor_offset,
 							      int next)
 {
+	struct roaring_bitmap_s *ours = compressed_as_roaring(stored->bitmap);
+	struct roaring_bitmap_s *best_bitmap;
+	size_t best_size;
+	int i, best_offset = 0;
+
+	best_bitmap = ours;
+	best_size = roaring_bitmap_portable_size_in_bytes(best_bitmap);
+
+	for (i = 1; i <= MAX_XOR_OFFSET_SEARCH; i++) {
+		struct roaring_bitmap_s *curr, *test_xor;
+		size_t test_size;
+		if (next - i < 0)
+			break;
+
+		curr = compressed_as_roaring(writer.selected[next - i].bitmap);
+		test_xor = roaring_bitmap_xor(curr, ours);
+		roaring_bitmap_run_optimize(test_xor);
+
+		test_size = roaring_bitmap_portable_size_in_bytes(test_xor);
+		if (test_size < best_size) {
+			if (best_bitmap != ours)
+				roaring_bitmap_free(best_bitmap);
+
+			best_bitmap = test_xor;
+			best_offset = i;
+		} else {
+			roaring_bitmap_free(test_xor);
+		}
+	}
 	if (xor_offset)
-		*xor_offset = 0;
-	return stored->bitmap;
+		*xor_offset = best_offset;
+	return compress_roaring_bitmap(best_bitmap);
 }
 
 static struct compressed_bitmap *find_best_xor_offset(struct bitmapped_commit *stored,
@@ -757,10 +786,6 @@ static void write_selected_commits_v1(struct hashfile *f,
 			offsets[i] = hashfile_total(f);
 
 		hashwrite_be32(f, commit_positions[i]);
-		if (writer.type != TYPE_EWAH && stored->xor_offset)
-			BUG("unexpected non-zero xor_offset for commit %s: %d",
-			    oid_to_hex(&stored->commit->object.oid),
-			    stored->xor_offset);
 		hashwrite_u8(f, stored->xor_offset);
 		hashwrite_u8(f, stored->flags);
 

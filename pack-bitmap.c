@@ -122,26 +122,15 @@ struct bitmap_index {
 };
 
 static struct compressed_bitmap *lookup_stored_bitmap(enum compressed_bitmap_type type,
-						      struct stored_bitmap *st)
+						      struct stored_bitmap *st);
+
+static struct compressed_bitmap *compose_ewah_bitmap(struct stored_bitmap *st)
 {
 	struct compressed_bitmap *parent;
 	struct ewah_bitmap *composed;
 
-	if (!st->xor)
-		return st->root;
-
-	if (type != TYPE_EWAH) {
-		/*
-		 * we only support XOR'd bitmaps when compressing with
-		 * EWAH, so all bitmaps we read at this point can be
-		 * safely forced to an EWAH bitmap with
-		 * `compressed_as_ewah()`.
-		 */
-		BUG("cannot XOR non-EWAH bitmap type: %d", type);
-	}
-
 	composed = ewah_pool_new();
-	parent = lookup_stored_bitmap(type, st->xor);
+	parent = lookup_stored_bitmap(TYPE_EWAH, st->xor);
 	ewah_xor(compressed_as_ewah(st->root), compressed_as_ewah(parent),
 		 composed);
 
@@ -149,7 +138,39 @@ static struct compressed_bitmap *lookup_stored_bitmap(enum compressed_bitmap_typ
 	st->root = compress_ewah_bitmap(composed);
 	st->xor = NULL;
 
-	return compress_ewah_bitmap(composed);
+	return st->root;
+}
+
+static struct compressed_bitmap *compose_roaring_bitmap(struct stored_bitmap *st)
+{
+	struct compressed_bitmap *parent;
+	struct roaring_bitmap_s *composed;
+
+	parent = lookup_stored_bitmap(TYPE_ROARING, st->xor);
+	composed = roaring_bitmap_xor(compressed_as_roaring(st->root),
+				      compressed_as_roaring(parent));
+
+	roaring_bitmap_free(compressed_as_roaring(st->root));
+
+	st->root = compress_roaring_bitmap(composed);
+	st->xor = NULL;
+
+	return st->root;
+}
+
+static struct compressed_bitmap *lookup_stored_bitmap(enum compressed_bitmap_type type,
+						      struct stored_bitmap *st)
+{
+	if (!st->xor)
+		return st->root;
+
+	switch (type) {
+	case TYPE_EWAH:
+		return compose_ewah_bitmap(st);
+	case TYPE_ROARING:
+		return compose_roaring_bitmap(st);
+	}
+	unknown_bitmap_type(type);
 }
 
 static struct compressed_bitmap *read_ewah_bitmap_1(struct bitmap_index *index)
@@ -323,7 +344,7 @@ static int nth_bitmap_object_oid(struct bitmap_index *index,
 	return nth_packed_object_id(oid, index->pack, n);
 }
 
-static int load_bitmap_entries_v1_ewah(struct bitmap_index *index)
+static int load_bitmap_entries_v1(struct bitmap_index *index)
 {
 	uint32_t i;
 	struct stored_bitmap *recent_bitmaps[MAX_XOR_OFFSET] = { NULL };
@@ -336,14 +357,16 @@ static int load_bitmap_entries_v1_ewah(struct bitmap_index *index)
 		struct object_id oid;
 
 		if (index->map_size - index->map_pos < 6)
-			return error(_("corrupt ewah bitmap: truncated header for entry %d"), i);
+			return error(_("corrupt %s bitmap: truncated header for entry %d"),
+				     bitmap_type_name(index->type), i);
 
 		commit_idx_pos = read_be32(index->map, &index->map_pos);
 		xor_offset = read_u8(index->map, &index->map_pos);
 		flags = read_u8(index->map, &index->map_pos);
 
 		if (nth_bitmap_object_oid(index, &oid, commit_idx_pos) < 0)
-			return error(_("corrupt ewah bitmap: commit index %u out of range"),
+			return error(_("corrupt %s bitmap: commit index %u out of range"),
+				     bitmap_type_name(index->type),
 				     (unsigned)commit_idx_pos);
 
 		bitmap = read_bitmap_1(index);
@@ -365,57 +388,6 @@ static int load_bitmap_entries_v1_ewah(struct bitmap_index *index)
 	}
 
 	return 0;
-}
-
-/*
- * TODO(@ttaylorr): the EWAH version of this function should in theory
- * be able to work with both EWAH and non-EWAH bitmaps, since:
- *
- *   - read_bitmap_1() understands how to read a bitmap based on the
- *     compression type used by that bitmap index.
- *
- *   - xor_bitmap is NULL when there is no XOR offset (which is
- *     currently the case for Roaring bitmaps).
- */
-static int load_bitmap_entries_v1_roaring(struct bitmap_index *index)
-{
-	uint32_t i;
-	for (i = 0; i < index->entry_count; i++) {
-		uint32_t commit_idx_pos;
-		int flags;
-		struct object_id oid;
-		struct compressed_bitmap *bitmap;
-
-		if (index->map_size - index->map_pos < 6)
-			return error(_("corrupt roaring bitmap: truncated header for entry %d"), i);
-
-		commit_idx_pos = read_be32(index->map, &index->map_pos);
-		read_u8(index->map, &index->map_pos); /* discard XOR offset */
-		flags = read_u8(index->map, &index->map_pos);
-
-		if (nth_bitmap_object_oid(index, &oid, commit_idx_pos) < 0)
-			return error(_("corrupt roaring bitmap: commit index %u out of range"),
-				     (unsigned)commit_idx_pos);
-
-		bitmap = read_bitmap_1(index);
-		if (!bitmap)
-			return -1;
-
-		store_bitmap(index, bitmap, &oid, NULL, flags);
-	}
-
-	return 0;
-}
-
-static int load_bitmap_entries_v1(struct bitmap_index *index)
-{
-	switch (index->type) {
-	case TYPE_EWAH:
-		return load_bitmap_entries_v1_ewah(index);
-	case TYPE_ROARING:
-		return load_bitmap_entries_v1_roaring(index);
-	}
-	unknown_bitmap_type(index->type);
 }
 
 char *midx_bitmap_filename(struct multi_pack_index *midx)
