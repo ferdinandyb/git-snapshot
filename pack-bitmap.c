@@ -1588,30 +1588,26 @@ static void filter_bitmap_blob_limit(struct bitmap_index *bitmap_git,
 {
 	struct eindex *eindex = &bitmap_git->ext_index;
 	struct bitmap *tips;
-	struct ewah_iterator it;
-	eword_t mask;
+	struct compressed_bitmap_iterator it;
 	uint32_t i;
+	size_t pos;
 
 	tips = find_tip_objects(bitmap_git, tip_objects, OBJ_BLOB);
 
-	for (i = 0, init_type_iterator(&it, bitmap_git, OBJ_BLOB);
-	     i < to_filter->word_alloc && ewah_iterator_next(&mask, &it);
-	     i++) {
-		eword_t word = to_filter->words[i] & mask;
-		unsigned offset;
+	init_type_iterator_1(&it, bitmap_git, OBJ_BLOB);
 
-		for (offset = 0; offset < BITS_IN_EWORD; offset++) {
-			uint32_t pos;
+	while (compressed_bitmap_iterator_next(&it, &pos)) {
+		eword_t mask;
+		if (pos / BITS_IN_EWORD >= to_filter->word_alloc)
+			break;
 
-			if ((word >> offset) == 0)
-				break;
-			offset += ewah_bit_ctz64(word >> offset);
-			pos = i * BITS_IN_EWORD + offset;
+		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
+		if (!(to_filter->words[pos / BITS_IN_EWORD] & mask))
+			continue;
 
-			if (!bitmap_get(tips, pos) &&
-			    get_size_by_pos(bitmap_git, pos) >= limit)
-				bitmap_unset(to_filter, pos);
-		}
+		if (!bitmap_get(tips, pos) &&
+		    get_size_by_pos(bitmap_git, pos) >= limit)
+			bitmap_unset(to_filter, pos);
 	}
 
 	for (i = 0; i < eindex->count; i++) {
