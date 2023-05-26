@@ -1335,46 +1335,51 @@ static void show_objects_for_type(struct bitmap_index *bitmap_git,
 {
 	struct bitmap *objects = bitmap_git->result;
 	struct compressed_bitmap_iterator it;
-	size_t pos;
+	size_t i;
+	uint32_t offset;
+	eword_t filter;
 
 	init_type_iterator(&it, bitmap_git, object_type);
 
-	while (compressed_bitmap_iterator_next(&it, &pos)) {
-		eword_t mask;
-		struct packed_git *pack;
-		struct object_id oid;
-		uint32_t hash = 0, index_pos;
-		off_t ofs;
+	for (i = 0; i < objects->word_alloc &&
+			compressed_bitmap_iterator_next(&it, &filter); i++) {
+		eword_t word = objects->words[i] & filter;
+		size_t pos = (i * BITS_IN_EWORD);
 
-		if (pos / BITS_IN_EWORD >= objects->word_alloc)
-			break;
+		for (offset = 0; offset < BITS_IN_EWORD; ++offset) {
+			struct packed_git *pack;
+			struct object_id oid;
+			uint32_t hash = 0, index_pos;
+			off_t ofs;
 
-		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
-		if (!(objects->words[pos / BITS_IN_EWORD] & mask))
-			continue;
+			if ((word >> offset) == 0)
+				break;
 
-		if (bitmap_is_midx(bitmap_git)) {
-			struct multi_pack_index *m = bitmap_git->midx;
-			uint32_t pack_id;
+			offset += ewah_bit_ctz64(word >> offset);
 
-			index_pos = pack_pos_to_midx(m, pos);
-			ofs = nth_midxed_offset(m, index_pos);
-			nth_midxed_object_oid(&oid, m, index_pos);
+			if (bitmap_is_midx(bitmap_git)) {
+				struct multi_pack_index *m = bitmap_git->midx;
+				uint32_t pack_id;
 
-			pack_id = nth_midxed_pack_int_id(m, index_pos);
-			pack = bitmap_git->midx->packs[pack_id];
-		} else {
-			index_pos = pack_pos_to_index(bitmap_git->pack, pos);
-			ofs = pack_pos_to_offset(bitmap_git->pack, pos);
-			nth_bitmap_object_oid(bitmap_git, &oid, index_pos);
+				index_pos = pack_pos_to_midx(m, pos + offset);
+				ofs = nth_midxed_offset(m, index_pos);
+				nth_midxed_object_oid(&oid, m, index_pos);
 
-			pack = bitmap_git->pack;
+				pack_id = nth_midxed_pack_int_id(m, index_pos);
+				pack = bitmap_git->midx->packs[pack_id];
+			} else {
+				index_pos = pack_pos_to_index(bitmap_git->pack, pos + offset);
+				ofs = pack_pos_to_offset(bitmap_git->pack, pos + offset);
+				nth_bitmap_object_oid(bitmap_git, &oid, index_pos);
+
+				pack = bitmap_git->pack;
+			}
+
+			if (bitmap_git->hashes)
+				hash = get_be32(bitmap_git->hashes + index_pos);
+
+			show_reach(&oid, object_type, 0, hash, pack, ofs);
 		}
-
-		if (bitmap_git->hashes)
-			hash = get_be32(bitmap_git->hashes + index_pos);
-
-		show_reach(&oid, object_type, 0, hash, pack, ofs);
 	}
 }
 
@@ -1428,8 +1433,8 @@ static void filter_bitmap_exclude_type(struct bitmap_index *bitmap_git,
 	struct eindex *eindex = &bitmap_git->ext_index;
 	struct bitmap *tips;
 	struct compressed_bitmap_iterator it;
+	eword_t mask;
 	uint32_t i;
-	size_t pos;
 
 	/*
 	 * The non-bitmap version of this filter never removes
@@ -1445,23 +1450,12 @@ static void filter_bitmap_exclude_type(struct bitmap_index *bitmap_git,
 	 * words for the objects that are actually in the bitmapped
 	 * packfile.
 	 */
-	while (compressed_bitmap_iterator_next(&it, &pos)) {
-		eword_t mask;
-		if (pos / BITS_IN_EWORD > to_filter->word_alloc)
-			break;
-
-		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
-
-		/*
-		 * Objects that are explicitly mentioned in the tips bitmap
-		 * (even if they are of the excluded type) are kept
-		 * unconditionally.
-		 */
-		if ((pos / BITS_IN_EWORD < tips->word_alloc) &&
-		    (tips->words[pos / BITS_IN_EWORD] & mask))
-			continue;
-
-		to_filter->words[pos / BITS_IN_EWORD] &= ~mask;
+	for (i = 0;
+	     i < to_filter->word_alloc && compressed_bitmap_iterator_next(&it, &mask);
+	     i++) {
+		if (i < tips->word_alloc)
+			mask &= ~tips->words[i];
+		to_filter->words[i] &= ~mask;
 	}
 
 	/*
@@ -1535,25 +1529,29 @@ static void filter_bitmap_blob_limit(struct bitmap_index *bitmap_git,
 	struct eindex *eindex = &bitmap_git->ext_index;
 	struct bitmap *tips;
 	struct compressed_bitmap_iterator it;
+	eword_t mask;
 	uint32_t i;
-	size_t pos;
 
 	tips = find_tip_objects(bitmap_git, tip_objects, OBJ_BLOB);
 
-	init_type_iterator(&it, bitmap_git, OBJ_BLOB);
+	for (i = 0, init_type_iterator(&it, bitmap_git, OBJ_BLOB);
+	     i < to_filter->word_alloc && compressed_bitmap_iterator_next(&it, &mask);
+	     i++) {
+		eword_t word = to_filter->words[i] & mask;
+		unsigned offset;
 
-	while (compressed_bitmap_iterator_next(&it, &pos)) {
-		eword_t mask;
-		if (pos / BITS_IN_EWORD >= to_filter->word_alloc)
-			break;
+		for (offset = 0; offset < BITS_IN_EWORD; offset++) {
+			uint32_t pos;
 
-		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
-		if (!(to_filter->words[pos / BITS_IN_EWORD] & mask))
-			continue;
+			if ((word >> offset) == 0)
+				break;
+			offset += ewah_bit_ctz64(word >> offset);
+			pos = i * BITS_IN_EWORD + offset;
 
-		if (!bitmap_get(tips, pos) &&
-		    get_size_by_pos(bitmap_git, pos) >= limit)
-			bitmap_unset(to_filter, pos);
+			if (!bitmap_get(tips, pos) &&
+			    get_size_by_pos(bitmap_git, pos) >= limit)
+				bitmap_unset(to_filter, pos);
+		}
 	}
 
 	for (i = 0; i < eindex->count; i++) {
@@ -1996,19 +1994,14 @@ static uint32_t count_object_type(struct bitmap_index *bitmap_git,
 	struct eindex *eindex = &bitmap_git->ext_index;
 
 	uint32_t i = 0, count = 0;
-	size_t pos;
 	struct compressed_bitmap_iterator it;
+	eword_t filter;
 
 	init_type_iterator(&it, bitmap_git, type);
 
-	while (compressed_bitmap_iterator_next(&it, &pos)) {
-		eword_t mask;
-		if (pos / BITS_IN_EWORD >= objects->word_alloc)
-			break;
-
-		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
-		if (objects->words[pos / BITS_IN_EWORD] & mask)
-			count++;
+	while (i < objects->word_alloc && compressed_bitmap_iterator_next(&it, &filter)) {
+		eword_t word = objects->words[i++] & filter;
+		count += ewah_bit_popcount64(word);
 	}
 
 	for (i = 0; i < eindex->count; ++i) {
@@ -2254,17 +2247,27 @@ int rebuild_bitmap(const uint32_t *reposition,
 {
 	size_t pos;
 	struct compressed_bitmap_iterator it;
+	eword_t word;
 
 	init_compressed_bitmap_iterator(&it, source);
 
-	while (compressed_bitmap_iterator_next(&it, &pos)) {
-		uint32_t bit_pos = reposition[pos];
-		if (bit_pos > 0)
-			bitmap_set(dest, bit_pos - 1);
-		else {
-			/* can't reuse, we don't have the object */
-			return -1;
+	while (compressed_bitmap_iterator_next(&it, &word)) {
+		uint32_t offset, bit_pos;
+
+		for (offset = 0; offset < BITS_IN_EWORD; ++offset) {
+			if ((word >> offset) == 0)
+				break;
+
+			offset += ewah_bit_ctz64(word >> offset);
+
+			bit_pos = reposition[pos + offset];
+			if (bit_pos > 0)
+				bitmap_set(dest, bit_pos - 1);
+			else /* can't reuse, we don't have the object */
+				return -1;
 		}
+
+		pos += BITS_IN_EWORD;
 	}
 
 	return 0;
@@ -2361,42 +2364,50 @@ static off_t get_disk_usage_for_type(struct bitmap_index *bitmap_git,
 	struct bitmap *result = bitmap_git->result;
 	off_t total = 0;
 	struct compressed_bitmap_iterator it;
-	size_t pos;
+	eword_t filter;
+	size_t i;
 
 	init_type_iterator(&it, bitmap_git, object_type);
 
-	while (compressed_bitmap_iterator_next(&it, &pos)) {
-		eword_t mask;
-		if (pos / BITS_IN_EWORD >= result->word_alloc)
-			break;
+	for (i = 0; i < result->word_alloc &&
+			compressed_bitmap_iterator_next(&it, &filter); i++) {
+		eword_t word = result->words[i] & filter;
+		size_t base = (i * BITS_IN_EWORD);
+		unsigned offset;
 
-		mask = (eword_t)1 << (pos % BITS_IN_EWORD);
-
-		if (!(result->words[pos / BITS_IN_EWORD] & mask))
+		if (!word)
 			continue;
 
-		if (bitmap_is_midx(bitmap_git)) {
-			uint32_t pack_pos;
-			uint32_t midx_pos = pack_pos_to_midx(bitmap_git->midx, pos);
-			off_t offset = nth_midxed_offset(bitmap_git->midx, midx_pos);
+		for (offset = 0; offset < BITS_IN_EWORD; offset++) {
+			if ((word >> offset) == 0)
+				break;
 
-			uint32_t pack_id = nth_midxed_pack_int_id(bitmap_git->midx, midx_pos);
-			struct packed_git *pack = bitmap_git->midx->packs[pack_id];
+			offset += ewah_bit_ctz64(word >> offset);
 
-			if (offset_to_pack_pos(pack, offset, &pack_pos) < 0) {
-				struct object_id oid;
-				nth_midxed_object_oid(&oid, bitmap_git->midx, midx_pos);
+			if (bitmap_is_midx(bitmap_git)) {
+				uint32_t pack_pos;
+				uint32_t midx_pos = pack_pos_to_midx(bitmap_git->midx, base + offset);
+				off_t offset = nth_midxed_offset(bitmap_git->midx, midx_pos);
 
-				die(_("could not find '%s' in pack '%s' at offset %"PRIuMAX),
-				    oid_to_hex(&oid),
-				    pack->pack_name,
-				    (uintmax_t)offset);
+				uint32_t pack_id = nth_midxed_pack_int_id(bitmap_git->midx, midx_pos);
+				struct packed_git *pack = bitmap_git->midx->packs[pack_id];
+
+				if (offset_to_pack_pos(pack, offset, &pack_pos) < 0) {
+					struct object_id oid;
+					nth_midxed_object_oid(&oid, bitmap_git->midx, midx_pos);
+
+					die(_("could not find '%s' in pack '%s' at offset %"PRIuMAX),
+					    oid_to_hex(&oid),
+					    pack->pack_name,
+					    (uintmax_t)offset);
+				}
+
+				total += pack_pos_to_offset(pack, pack_pos + 1) - offset;
+			} else {
+				size_t pos = base + offset;
+				total += pack_pos_to_offset(bitmap_git->pack, pos + 1) -
+					 pack_pos_to_offset(bitmap_git->pack, pos);
 			}
-
-			total += pack_pos_to_offset(pack, pack_pos + 1) - offset;
-		} else {
-			total += pack_pos_to_offset(bitmap_git->pack, pos + 1) -
-				pack_pos_to_offset(bitmap_git->pack, pos);
 		}
 	}
 

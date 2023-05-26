@@ -41,16 +41,18 @@ struct roaring_bitmap_s *bitmap_to_roaring(struct bitmap *bitmap);
 struct compressed_bitmap_iterator {
 	union {
 		struct ewah_iterator ewah;
-		struct roaring_uint32_iterator_s roaring;
+		struct bitset_s *roaring;
 	} u;
 	enum compressed_bitmap_type type;
 
-	// EWAH-specific
-	struct {
-		eword_t word;
-		size_t pos;
-		size_t offset;
-	} ewah;
+	size_t roaring_pos;
+
+#if 0
+	uint32_t roaring_buf[BITS_IN_EWORD];
+	uint32_t roaring_alloc;
+
+	size_t roaring_pos, roaring_offset;
+#endif
 };
 
 void init_compressed_bitmap_iterator(struct compressed_bitmap_iterator *it,
