@@ -727,7 +727,7 @@ static int roaring_serialize_to(struct hashfile *f,
 {
 	size_t expected_size, actual_size;
 	char *raw;
-	int ret;
+	int ret = 0;
 
 	expected_size = roaring_bitmap_portable_size_in_bytes(bitmap);
 	ALLOC_ARRAY(raw, expected_size);
