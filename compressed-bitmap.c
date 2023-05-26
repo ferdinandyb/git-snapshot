@@ -102,27 +102,17 @@ struct roaring_bitmap_s *compressed_as_roaring(struct compressed_bitmap *bitmap)
 	return &bitmap->u.roaring;
 }
 
-#define ROARING_BUFFER_LEN (256)
-
 static struct bitmap *roaring_to_bitmap(struct roaring_bitmap_s *roaring)
 {
-	static uint32_t buf[ROARING_BUFFER_LEN]; /* scratch space */
-	struct bitmap *bitmap = bitmap_new();
-	struct roaring_uint32_iterator_s it;
-	uint32_t i, n;
+	struct bitmap *out = malloc(sizeof(struct bitmap));
+	bitset_t *set = bitset_create();
 
-	roaring_init_iterator(roaring, &it);
+	roaring_bitmap_to_bitset(roaring, set);
 
-	while (1) {
-		n = roaring_read_uint32_iterator(&it, buf, ROARING_BUFFER_LEN);
-		for (i = 0; i < n; i++)
-			bitmap_set(bitmap, buf[i]);
+	out->words = set->array;
+	out->word_alloc = set->arraysize;
 
-		if (n < ROARING_BUFFER_LEN)
-			break;
-	}
-
-	return bitmap;
+	return out;
 }
 
 struct bitmap *compressed_as_bitmap(struct compressed_bitmap *bitmap)
