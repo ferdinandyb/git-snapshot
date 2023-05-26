@@ -2245,7 +2245,7 @@ int rebuild_bitmap(const uint32_t *reposition,
 		   struct compressed_bitmap *source,
 		   struct bitmap *dest)
 {
-	size_t pos;
+	size_t pos = 0;
 	struct compressed_bitmap_iterator it;
 	eword_t word;
 

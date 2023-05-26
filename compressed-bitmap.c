@@ -204,9 +204,6 @@ void init_ewah_iterator(struct compressed_bitmap_iterator *it,
 void init_roaring_iterator(struct compressed_bitmap_iterator *it,
 			   struct roaring_bitmap_s *roaring)
 {
-#if 0
-	roaring_init_iterator(roaring, &it->u.roaring);
-#endif
 	it->u.roaring = bitset_create();
 	if (!roaring_bitmap_to_bitset(roaring, it->u.roaring))
 		die(_("could not initialize roaring bitset"));
@@ -223,47 +220,11 @@ static int ewah_iterator_next_1(struct compressed_bitmap_iterator *it,
 	return ewah_iterator_next(result, &it->u.ewah);
 }
 
-#if 0
-static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
-				   eword_t *result_p)
-{
-	eword_t word = 0;
-	size_t i = 0;
-
-	if (it->type != TYPE_ROARING)
-		BUG("expected roaring bitmap, got: %d", it->type);
-
-	while (i < BITS_IN_EWORD) {
-		if (!it->roaring_offset)
-			it->roaring_alloc = roaring_read_uint32_iterator(&it->u.roaring,
-									 it->roaring_buf,
-									 BITS_IN_EWORD);
-
-		for (; it->roaring_offset < it->roaring_alloc; it->roaring_offset++) {
-			eword_t mask;
-			if (it->roaring_buf[it->roaring_offset] >= (it->roaring_pos + 1) * BITS_IN_EWORD)
-				goto done;
-
-			mask = (eword_t)1 << it->roaring_buf[it->roaring_offset] % BITS_IN_EWORD;
-			word |= mask;
-		}
-
-		i = it->roaring_buf[it->roaring_offset] % BITS_IN_EWORD;
-	}
-
-done:
-	if (result_p)
-		*result_p = word;
-	it->roaring_pos++;
-	return it->roaring_alloc <= BITS_IN_EWORD;
-}
-#endif
-
 static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
 				   eword_t *result_p)
 {
 	struct bitset_s *bitset = it->u.roaring;
-	if (it->roaring_pos >= bitset_size_in_words(bitset)) {
+	if (it->roaring_pos >= bitset->arraysize) {
 		if (result_p)
 			*result_p = 0;
 		return 0;
@@ -271,7 +232,7 @@ static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
 
 	if (result_p)
 		*result_p = (eword_t)bitset->array[it->roaring_pos];
-	return ++it->roaring_pos < bitset_size_in_words(bitset);
+	return ++it->roaring_pos < bitset->arraysize;
 }
 
 int compressed_bitmap_iterator_next(struct compressed_bitmap_iterator *it,
