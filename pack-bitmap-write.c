@@ -66,10 +66,12 @@ void bitmap_writer_build_type_index(struct packing_data *to_pack,
 {
 	uint32_t i;
 
-	writer.commits = new_compressed_bitmap(to_pack->bitmap_type);
-	writer.trees = new_compressed_bitmap(to_pack->bitmap_type);
-	writer.blobs = new_compressed_bitmap(to_pack->bitmap_type);
-	writer.tags = new_compressed_bitmap(to_pack->bitmap_type);
+	writer.type = to_pack->bitmap_type;
+
+	writer.commits = new_compressed_bitmap(writer.type);
+	writer.trees = new_compressed_bitmap(writer.type);
+	writer.blobs = new_compressed_bitmap(writer.type);
+	writer.tags = new_compressed_bitmap(writer.type);
 	ALLOC_ARRAY(to_pack->in_pack_pos, to_pack->nr_objects);
 
 	for (i = 0; i < index_nr; ++i) {
@@ -194,12 +196,12 @@ static struct compressed_bitmap *find_best_xor_offset_roaring(struct bitmapped_c
 							      int next)
 {
 	struct roaring_bitmap_s *ours = compressed_as_roaring(stored->bitmap);
-	struct roaring_bitmap_s *best_bitmap;
+	struct roaring_bitmap_s *best_bitmap = ours;
 	size_t best_size;
 	int i, best_offset = 0;
 
-	best_bitmap = ours;
-	best_size = roaring_bitmap_portable_size_in_bytes(best_bitmap);
+	roaring_bitmap_run_optimize(ours);
+	best_size = roaring_bitmap_portable_size_in_bytes(ours);
 
 	for (i = 1; i <= MAX_XOR_OFFSET_SEARCH; i++) {
 		struct roaring_bitmap_s *curr, *test_xor;
@@ -555,7 +557,6 @@ int bitmap_writer_build(struct packing_data *to_pack)
 
 	writer.bitmaps = kh_init_oid_map();
 	writer.to_pack = to_pack;
-	writer.type = to_pack->bitmap_type;
 
 	if (writer.show_progress)
 		writer.progress = start_progress("Building bitmaps", writer.selected_nr);
@@ -888,7 +889,7 @@ void bitmap_writer_finish(struct pack_idx_entry **index,
 			  const char *filename,
 			  uint16_t options)
 {
-	static uint16_t default_version = 1;
+	static uint16_t default_version = 2;
 	static uint16_t flags = BITMAP_OPT_FULL_DAG;
 	struct strbuf tmp_file = STRBUF_INIT;
 	struct hashfile *f;
@@ -896,19 +897,18 @@ void bitmap_writer_finish(struct pack_idx_entry **index,
 	off_t *offsets = NULL;
 	uint32_t i;
 
-	struct bitmap_disk_header header;
-
 	int fd = odb_mkstemp(&tmp_file, "pack/tmp_bitmap_XXXXXX");
 
 	f = hashfd(fd, tmp_file.buf);
 
-	memcpy(header.magic, BITMAP_IDX_SIGNATURE, sizeof(BITMAP_IDX_SIGNATURE));
-	header.version = htons(default_version);
-	header.options = htons(flags | options);
-	header.entry_count = htonl(writer.selected_nr);
-	hashcpy(header.checksum, writer.pack_checksum);
+	hashwrite(f, BITMAP_IDX_SIGNATURE, sizeof(BITMAP_IDX_SIGNATURE));
+	hashwrite_be16(f, default_version);
+	if (default_version == 2)
+		hashwrite(f, writer.type == TYPE_EWAH ? "EWAH" : "ROAR", 4);
+	hashwrite_be16(f, flags | options);
+	hashwrite_be32(f, writer.selected_nr);
 
-	hashwrite(f, &header, sizeof(header) - GIT_MAX_RAWSZ + the_hash_algo->rawsz);
+	hashwrite(f, writer.pack_checksum, the_hash_algo->rawsz);
 	dump_bitmap(f, writer.commits);
 	dump_bitmap(f, writer.trees);
 	dump_bitmap(f, writer.blobs);

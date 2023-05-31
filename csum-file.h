@@ -69,6 +69,12 @@ static inline void hashwrite_u8(struct hashfile *f, uint8_t data)
 	hashwrite(f, &data, sizeof(data));
 }
 
+static inline void hashwrite_be16(struct hashfile *f, uint16_t data)
+{
+	data = htons(data);
+	hashwrite(f, &data, sizeof(data));
+}
+
 static inline void hashwrite_be32(struct hashfile *f, uint32_t data)
 {
 	data = htonl(data);

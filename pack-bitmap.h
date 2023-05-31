@@ -15,6 +15,7 @@ static const char BITMAP_IDX_SIGNATURE[] = {'B', 'I', 'T', 'M'};
 
 struct bitmap_disk_header {
 	char magic[ARRAY_SIZE(BITMAP_IDX_SIGNATURE)];
+	char type[4];
 	uint16_t version;
 	uint16_t options;
 	uint32_t entry_count;

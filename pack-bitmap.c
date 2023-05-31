@@ -240,26 +240,65 @@ static uint32_t bitmap_num_objects(struct bitmap_index *index)
 	return index->pack->num_objects;
 }
 
+static inline uint32_t read_be32(const unsigned char *buffer, size_t *pos)
+{
+	uint32_t result = get_be32(buffer + *pos);
+	(*pos) += sizeof(result);
+	return result;
+}
+
+static inline uint16_t read_be16(const unsigned char *buffer, size_t *pos)
+{
+	uint16_t result = get_be16(buffer + *pos);
+	(*pos) += sizeof(result);
+	return result;
+}
+
+static inline uint8_t read_u8(const unsigned char *buffer, size_t *pos)
+{
+	return buffer[(*pos)++];
+}
+
 static int load_bitmap_header(struct bitmap_index *index)
 {
-	struct bitmap_disk_header *header = (void *)index->map;
-	size_t header_size = sizeof(*header) - GIT_MAX_RAWSZ + the_hash_algo->rawsz;
-
+	struct bitmap_disk_header header;
+	size_t header_size = sizeof(header) - GIT_MAX_RAWSZ + the_hash_algo->rawsz;
 	if (index->map_size < header_size + the_hash_algo->rawsz)
 		return error(_("corrupted bitmap index (too small)"));
 
-	if (memcmp(header->magic, BITMAP_IDX_SIGNATURE, sizeof(BITMAP_IDX_SIGNATURE)) != 0)
+	if (memcmp(index->map, BITMAP_IDX_SIGNATURE, sizeof(BITMAP_IDX_SIGNATURE)) != 0)
 		return error(_("corrupted bitmap index file (wrong header)"));
 
-	index->version = ntohs(header->version);
-	if (index->version != 1)
+	index->map_pos = 4;
+	header.version = index->version = read_be16(index->map, &index->map_pos);
+	if (!(index->version == 1 || index->version == 2))
 		return error(_("unsupported version '%d' for bitmap index file"), index->version);
+
+	if (index->version == 1)
+		header_size -= 4;
 
 	/* Parse known bitmap format options */
 	{
-		uint32_t flags = ntohs(header->options);
+		uint32_t flags;
 		size_t cache_size = st_mult(bitmap_num_objects(index), sizeof(uint32_t));
 		unsigned char *index_end = index->map + index->map_size - the_hash_algo->rawsz;
+
+		if (index->version == 2) {
+			const char *type = (const char *)index->map + index->map_pos;
+			if (!strcmp("EWAH", type))
+				index->type = TYPE_EWAH;
+			else if (!strcmp("ROAR", type))
+				index->type = TYPE_ROARING;
+			else
+				return error(_("corrupt bitmap index file "
+					       "(unknown type: %.4s)"), type);
+			index->map_pos += 4;
+		} else {
+			index->type = TYPE_EWAH;
+		}
+
+		flags = read_be16(index->map, &index->map_pos);
+		index->entry_count = read_be32(index->map, &index->map_pos);
 
 		if ((flags & BITMAP_OPT_FULL_DAG) == 0)
 			BUG("unsupported options for bitmap index file "
@@ -273,7 +312,7 @@ static int load_bitmap_header(struct bitmap_index *index)
 		}
 
 		if (flags & BITMAP_OPT_LOOKUP_TABLE) {
-			size_t table_size = st_mult(ntohl(header->entry_count),
+			size_t table_size = st_mult(index->entry_count,
 						    BITMAP_LOOKUP_TABLE_TRIPLET_WIDTH);
 			if (table_size > index_end - index->map - header_size)
 				return error(_("corrupted bitmap index file (too short to fit lookup table)"));
@@ -283,9 +322,8 @@ static int load_bitmap_header(struct bitmap_index *index)
 		}
 	}
 
-	index->entry_count = ntohl(header->entry_count);
-	index->checksum = header->checksum;
-	index->map_pos += header_size;
+	index->checksum = index->map + index->map_pos;
+	index->map_pos += the_hash_algo->rawsz;
 	return 0;
 }
 
@@ -319,18 +357,6 @@ static struct stored_bitmap *store_bitmap(struct bitmap_index *index,
 
 	kh_value(index->bitmaps, hash_pos) = stored;
 	return stored;
-}
-
-static inline uint32_t read_be32(const unsigned char *buffer, size_t *pos)
-{
-	uint32_t result = get_be32(buffer + *pos);
-	(*pos) += sizeof(result);
-	return result;
-}
-
-static inline uint8_t read_u8(const unsigned char *buffer, size_t *pos)
-{
-	return buffer[(*pos)++];
 }
 
 #define MAX_XOR_OFFSET 160
@@ -566,19 +592,10 @@ static int load_reverse_index(struct repository *r, struct bitmap_index *bitmap_
 
 static int load_bitmap(struct repository *r, struct bitmap_index *bitmap_git)
 {
-	char *bitmap_type;
-
 	assert(bitmap_git->map);
 
 	bitmap_git->bitmaps = kh_init_oid_map();
 	bitmap_git->ext_index.positions = kh_init_oid_pos();
-
-	/* TODO: should read from the .bitmap file itself, obviously */
-	bitmap_type = getenv("GIT_BITMAP_TYPE");
-	if (bitmap_type)
-		bitmap_git->type = bitmap_type_from_name(bitmap_type);
-	else
-		bitmap_git->type = TYPE_EWAH;
 
 	if (load_reverse_index(r, bitmap_git))
 		goto failed;
