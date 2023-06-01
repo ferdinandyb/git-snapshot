@@ -206,9 +206,12 @@ void init_roaring_iterator(struct compressed_bitmap_iterator *it,
 static int ewah_iterator_next_1(struct compressed_bitmap_iterator *it,
 				eword_t *result)
 {
+	int x;
 	if (it->type != TYPE_EWAH)
 		BUG("expected EWAH bitmap, got: %d", it->type);
-	return ewah_iterator_next(result, &it->u.ewah);
+	x = ewah_iterator_next(result, &it->u.ewah);
+	// warning("handing out (%"PRIuMAX")", *result);
+	return x;
 }
 
 static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
@@ -241,7 +244,7 @@ static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
 		i = it->roaring_buf[it->roaring_offset++] % BITS_IN_EWORD;
 		result |= (eword_t)1 << i;
 
-		if (it->roaring_offset >= ARRAY_SIZE(it->roaring_buf))
+		if (it->roaring_offset >= it->roaring_alloc)
 			it->roaring_has_data = it->roaring_offset = 0;
 
 		i++;
@@ -249,8 +252,9 @@ static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
 
 	if (result_p)
 		*result_p = result;
+	// warning("handing out (%"PRIuMAX")", result);
 	it->roaring_pos++;
-	return it->roaring_has_data || it->roaring_alloc == 64;
+	return it->roaring_offset <= it->roaring_alloc;
 }
 
 int compressed_bitmap_iterator_next(struct compressed_bitmap_iterator *it,

@@ -45,7 +45,7 @@ struct compressed_bitmap_iterator {
 	} u;
 	enum compressed_bitmap_type type;
 
-	uint32_t roaring_buf[2 * BITS_IN_EWORD];
+	uint32_t roaring_buf[128 * BITS_IN_EWORD];
 	size_t roaring_alloc;
 	size_t roaring_pos, roaring_offset;
 	unsigned roaring_has_data;
