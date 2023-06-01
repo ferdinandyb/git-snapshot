@@ -194,12 +194,13 @@ void init_ewah_iterator(struct compressed_bitmap_iterator *it,
 void init_roaring_iterator(struct compressed_bitmap_iterator *it,
 			   struct roaring_bitmap_s *roaring)
 {
-	it->u.roaring = bitset_create();
-	if (!roaring_bitmap_to_bitset(roaring, it->u.roaring))
-		die(_("could not initialize roaring bitset"));
+	roaring_init_iterator(roaring, &it->u.roaring);
 
 	it->type = TYPE_ROARING;
+	it->roaring_alloc = 0;
 	it->roaring_pos = 0;
+	it->roaring_offset = 0;
+	it->roaring_has_data = 0;
 }
 
 static int ewah_iterator_next_1(struct compressed_bitmap_iterator *it,
@@ -213,16 +214,43 @@ static int ewah_iterator_next_1(struct compressed_bitmap_iterator *it,
 static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
 				   eword_t *result_p)
 {
-	struct bitset_s *bitset = it->u.roaring;
-	if (it->roaring_pos >= bitset->arraysize) {
-		if (result_p)
-			*result_p = 0;
-		return 0;
+	size_t i = 0;
+	eword_t result = 0;
+	uint32_t max_val = (it->roaring_pos + 1) * BITS_IN_EWORD - 1;
+
+	while (i < BITS_IN_EWORD) {
+		if (!it->roaring_has_data) {
+			uint32_t alloc;
+
+			assert(!it->roaring_offset);
+
+			alloc = roaring_read_uint32_iterator(&it->u.roaring,
+							     it->roaring_buf,
+							     ARRAY_SIZE(it->roaring_buf));
+
+			it->roaring_alloc = alloc;
+			if (!it->roaring_alloc)
+				break;
+
+			it->roaring_has_data = 1;
+		}
+
+		if (it->roaring_buf[it->roaring_offset] > max_val)
+			break;
+
+		i = it->roaring_buf[it->roaring_offset++] % BITS_IN_EWORD;
+		result |= (eword_t)1 << i;
+
+		if (it->roaring_offset >= ARRAY_SIZE(it->roaring_buf))
+			it->roaring_has_data = it->roaring_offset = 0;
+
+		i++;
 	}
 
 	if (result_p)
-		*result_p = (eword_t)bitset->array[it->roaring_pos];
-	return ++it->roaring_pos < bitset->arraysize;
+		*result_p = result;
+	it->roaring_pos++;
+	return it->roaring_has_data || it->roaring_alloc == 64;
 }
 
 int compressed_bitmap_iterator_next(struct compressed_bitmap_iterator *it,
