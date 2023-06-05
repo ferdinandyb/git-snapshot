@@ -365,6 +365,7 @@ void shortlog_init(struct shortlog *log)
 	log->trailers.strdup_strings = 1;
 	log->trailers.cmp = strcasecmp;
 	log->format.strdup_strings = 1;
+	log->group_filter.strdup_strings = 1;
 }
 
 void shortlog_finish_setup(struct shortlog *log)
@@ -377,6 +378,7 @@ void shortlog_finish_setup(struct shortlog *log)
 				   log->email ? "%cN <%cE>" : "%cN");
 
 	string_list_sort(&log->trailers);
+	string_list_sort(&log->group_filter);
 }
 
 int cmd_shortlog(int argc, const char **argv, const char *prefix)
@@ -400,6 +402,8 @@ int cmd_shortlog(int argc, const char **argv, const char *prefix)
 			&parse_wrap_args),
 		OPT_CALLBACK(0, "group", &log, N_("field"),
 			N_("group by field"), parse_group_option),
+		OPT_STRING_LIST(0, "group-filter", &log.group_filter,
+				N_("group"), N_("only show matching groups")),
 		OPT_END(),
 	};
 
@@ -476,6 +480,13 @@ static void add_wrapped_shortlog_msg(struct strbuf *sb, const char *s,
 	strbuf_addch(sb, '\n');
 }
 
+static int want_shortlog_group(struct shortlog *log, const char *group)
+{
+	if (!log->group_filter.nr)
+		return 1;
+	return string_list_has_string(&log->group_filter, group);
+}
+
 void shortlog_output(struct shortlog *log)
 {
 	size_t i, j;
@@ -486,6 +497,9 @@ void shortlog_output(struct shortlog *log)
 		      log->summary ? compare_by_counter : compare_by_list);
 	for (i = 0; i < log->list.nr; i++) {
 		const struct string_list_item *item = &log->list.items[i];
+		if (!want_shortlog_group(log, item->string))
+			goto next;
+
 		if (log->summary) {
 			fprintf(log->file, "%6d\t%s\n",
 				(int)UTIL_TO_INT(item), item->string);
@@ -505,11 +519,15 @@ void shortlog_output(struct shortlog *log)
 					fprintf(log->file, "      %s\n", msg);
 			}
 			putc('\n', log->file);
+		}
+
+next:
+		if (!log->summary) {
+			struct string_list *onelines = item->util;
 			onelines->strdup_strings = 1;
 			string_list_clear(onelines, 0);
 			free(onelines);
 		}
-
 		log->list.items[i].util = NULL;
 	}
 

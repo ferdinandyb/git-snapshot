@@ -346,6 +346,60 @@ test_expect_success 'shortlog can match multiple groups' '
 	test_cmp expect actual
 '
 
+test_expect_success '--group-filter shows only matching groups (single groups)' '
+	cat >expect <<-\EOF &&
+	     1	A U Thor
+	EOF
+	git shortlog -ns \
+		--group=trailer:another-trailer \
+		--group-filter="A U Thor" \
+		-2 HEAD >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success '--group-filter shows only matching groups (multiple groups)' '
+	cat >expect <<-\EOF &&
+	     2	A U Thor
+	EOF
+	git shortlog -ns \
+		--group=author \
+		--group=trailer:some-trailer \
+		--group=trailer:another-trailer \
+		--group-filter="A U Thor" \
+		-2 HEAD >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success '--group-filter can be specified more than once' '
+	cat >expect <<-\EOF &&
+	     2	User B
+	     1	User A
+	EOF
+	git shortlog -ns \
+		--group=author \
+		--group=trailer:some-trailer \
+		--group=trailer:another-trailer \
+		--group-filter="User A" \
+		--group-filter="User B" \
+		-2 HEAD >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success '--no-group-filter reset group filters' '
+	cat >expect <<-\EOF &&
+	     2	A U Thor
+	     2	User B
+	     1	User A
+	EOF
+	git shortlog -ns \
+		--group=author \
+		--group=trailer:some-trailer \
+		--group=trailer:another-trailer \
+		--group-filter="A U Thor" --no-group-filter \
+		-2 HEAD >actual &&
+	test_cmp expect actual
+'
+
 test_expect_success 'shortlog can match multiple format groups' '
 	GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" \
 		git commit --allow-empty -m "identical names" &&

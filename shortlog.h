@@ -18,6 +18,8 @@ struct shortlog {
 	int abbrev;
 	struct date_mode date_mode;
 
+	struct string_list group_filter;
+
 	enum {
 		SHORTLOG_GROUP_AUTHOR = (1 << 0),
 		SHORTLOG_GROUP_COMMITTER = (1 << 1),

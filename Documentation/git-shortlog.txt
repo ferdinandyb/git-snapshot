@@ -97,6 +97,11 @@ counts both authors and co-authors.
 If width is `0` (zero) then indent the lines of the output without wrapping
 them.
 
+--group-filter=<group>::
+	Only show output from the given group. If given more than once,
+	show output from any of the previously specified groups. May be
+	cleared with `--no-group-filter`.
+
 <revision-range>::
 	Show only commits in the specified revision range.  When no
 	<revision-range> is specified, it defaults to `HEAD` (i.e. the
