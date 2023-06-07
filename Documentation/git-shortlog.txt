@@ -39,6 +39,11 @@ OPTIONS
 --email::
 	Show the email address of each author.
 
+--email-only::
+	Show only the email address of each author, or committer. If
+	using a different kind of group (e.g. trailers, custom format,
+	etc.), only values which contain name/email-pairs will be shown.
+
 --format[=<format>]::
 	Instead of the commit subject, use some other information to
 	describe each commit.  '<format>' can be any string accepted

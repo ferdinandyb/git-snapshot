@@ -30,6 +30,7 @@ struct shortlog {
 	struct string_list format;
 
 	int email;
+	int email_only;
 	struct string_list mailmap;
 	FILE *file;
 };

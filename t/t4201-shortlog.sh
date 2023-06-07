@@ -400,6 +400,34 @@ test_expect_success '--no-group-filter reset group filters' '
 	test_cmp expect actual
 '
 
+test_expect_success '--email-only shows emails from author' '
+	cat >expect <<-\EOF &&
+	     2	<author@example.com>
+	EOF
+	git shortlog -ns --group=author --email-only -2 HEAD >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success '--email-only shows emails from committer' '
+	cat >expect <<-\EOF &&
+	     2	<committer@example.com>
+	EOF
+	git shortlog -ns --group=committer --email-only -2 HEAD >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success '--email-only shows emails from trailers with idents' '
+	cat >expect <<-\EOF &&
+	     1	<a@example.com>
+	     1	<b@example.com>
+	EOF
+	# at this point, HEAD~3 has a trailer "Repeated-trailer: Foo",
+	# which is not shown here since it cannot be parsed as an ident
+	git shortlog -ns --group=trailer:some-trailer --email-only -3 \
+		HEAD >actual &&
+	test_cmp expect actual
+'
+
 test_expect_success 'shortlog can match multiple format groups' '
 	GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" \
 		git commit --allow-empty -m "identical names" &&

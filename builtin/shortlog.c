@@ -108,9 +108,13 @@ static int parse_ident(struct shortlog *log,
 	maillen = ident.mail_end - ident.mail_begin;
 
 	map_user(&log->mailmap, &mailbuf, &maillen, &namebuf, &namelen);
-	strbuf_add(out, namebuf, namelen);
-	if (log->email)
-		strbuf_addf(out, " <%.*s>", (int)maillen, mailbuf);
+	if (log->email_only) {
+		strbuf_addf(out, "<%.*s>", (int)maillen, mailbuf);
+	} else {
+		strbuf_add(out, namebuf, namelen);
+		if (log->email)
+			strbuf_addf(out, " <%.*s>", (int)maillen, mailbuf);
+	}
 
 	return 0;
 }
@@ -198,6 +202,8 @@ static void insert_records_from_trailers(struct shortlog *log,
 		strbuf_reset(&ident);
 		if (!parse_ident(log, &ident, value))
 			value = ident.buf;
+		else if (log->email_only)
+			continue;
 
 		if (!strset_add(dups, value))
 			continue;
@@ -370,12 +376,19 @@ void shortlog_init(struct shortlog *log)
 
 void shortlog_finish_setup(struct shortlog *log)
 {
-	if (log->groups & SHORTLOG_GROUP_AUTHOR)
-		string_list_append(&log->format,
-				   log->email ? "%aN <%aE>" : "%aN");
-	if (log->groups & SHORTLOG_GROUP_COMMITTER)
-		string_list_append(&log->format,
-				   log->email ? "%cN <%cE>" : "%cN");
+	if (log->email_only) {
+		if (log->groups & SHORTLOG_GROUP_AUTHOR)
+			string_list_append(&log->format, "<%aE>");
+		if (log->groups & SHORTLOG_GROUP_COMMITTER)
+			string_list_append(&log->format, "<%cE>");
+	} else {
+		if (log->groups & SHORTLOG_GROUP_AUTHOR)
+			string_list_append(&log->format,
+					   log->email ? "%aN <%aE>" : "%aN");
+		if (log->groups & SHORTLOG_GROUP_COMMITTER)
+			string_list_append(&log->format,
+					   log->email ? "%cN <%cE>" : "%cN");
+	}
 
 	string_list_sort(&log->trailers);
 	string_list_sort(&log->group_filter);
@@ -397,6 +410,8 @@ int cmd_shortlog(int argc, const char **argv, const char *prefix)
 			 N_("suppress commit descriptions, only provides commit count")),
 		OPT_BOOL('e', "email", &log.email,
 			 N_("show the email address of each author")),
+		OPT_BOOL(0, "email-only", &log.email_only,
+			 N_("only show the email address of each author")),
 		OPT_CALLBACK_F('w', NULL, &log, N_("<w>[,<i1>[,<i2>]]"),
 			N_("linewrap output"), PARSE_OPT_OPTARG,
 			&parse_wrap_args),
