@@ -102,15 +102,26 @@ struct roaring_bitmap_s *compressed_as_roaring(struct compressed_bitmap *bitmap)
 	return &bitmap->u.roaring;
 }
 
+#define ROARING_BUFFER_LEN (256)
+
 static struct bitmap *roaring_to_bitmap(struct roaring_bitmap_s *roaring)
 {
-	struct bitmap *out = malloc(sizeof(struct bitmap));
-	bitset_t *set = bitset_create();
+	static uint32_t buf[ROARING_BUFFER_LEN]; /* scratch space */
 
-	roaring_bitmap_to_bitset(roaring, set);
+	struct bitmap *out = bitmap_new();
+	struct roaring_uint32_iterator_s it = { 0 };
+	uint32_t i, n;
 
-	out->words = set->array;
-	out->word_alloc = set->arraysize;
+	roaring_init_iterator(roaring, &it);
+
+	while (1) {
+		n = roaring_read_uint32_iterator(&it, buf, ROARING_BUFFER_LEN);
+		for (i = 0; i < n; i++)
+			bitmap_set(out, (uint32_t)buf[i]);
+
+		if (n < ROARING_BUFFER_LEN)
+			break;
+	}
 
 	return out;
 }
@@ -210,7 +221,8 @@ static int ewah_iterator_next_1(struct compressed_bitmap_iterator *it,
 	if (it->type != TYPE_EWAH)
 		BUG("expected EWAH bitmap, got: %d", it->type);
 	x = ewah_iterator_next(result, &it->u.ewah);
-	// warning("handing out (%"PRIuMAX")", *result);
+	if (x)
+		warning("handing back word: %"PRIuMAX, (uintmax_t)*result);
 	return x;
 }
 
@@ -220,6 +232,7 @@ static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
 	size_t i = 0;
 	eword_t result = 0;
 	uint32_t max_val = (it->roaring_pos + 1) * BITS_IN_EWORD - 1;
+	int more = 0, ret;
 
 	while (i < BITS_IN_EWORD) {
 		if (!it->roaring_has_data) {
@@ -238,8 +251,10 @@ static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
 			it->roaring_has_data = 1;
 		}
 
-		if (it->roaring_buf[it->roaring_offset] > max_val)
+		if (it->roaring_buf[it->roaring_offset] > max_val) {
+			more = 1;
 			break;
+		}
 
 		i = it->roaring_buf[it->roaring_offset++] % BITS_IN_EWORD;
 		result |= (eword_t)1 << i;
@@ -252,9 +267,13 @@ static int roaring_iterator_next_1(struct compressed_bitmap_iterator *it,
 
 	if (result_p)
 		*result_p = result;
-	// warning("handing out (%"PRIuMAX")", result);
 	it->roaring_pos++;
-	return it->roaring_offset <= it->roaring_alloc;
+	ret = result || more || it->roaring_has_data || it->roaring_alloc;
+#ifdef Q
+	if (ret)
+		warning("handing back word: %"PRIuMAX, (uintmax_t)*result_p);
+#endif
+	return ret;
 }
 
 int compressed_bitmap_iterator_next(struct compressed_bitmap_iterator *it,

@@ -147,8 +147,8 @@ static struct compressed_bitmap *compose_roaring_bitmap(struct stored_bitmap *st
 	struct roaring_bitmap_s *composed;
 
 	parent = lookup_stored_bitmap(TYPE_ROARING, st->xor);
-	composed = roaring_bitmap_xor(compressed_as_roaring(st->root),
-				      compressed_as_roaring(parent));
+	composed = roaring_bitmap_xor(compressed_as_roaring(parent),
+				      compressed_as_roaring(st->root));
 
 	roaring_bitmap_free(compressed_as_roaring(st->root));
 
@@ -1071,7 +1071,7 @@ static void bitmap_or_roaring(struct bitmap *base,
 			      struct roaring_bitmap_s *partial)
 {
 	static uint32_t buf[ROARING_BUFFER_LEN]; /* scratch space */
-	struct roaring_uint32_iterator_s it;
+	struct roaring_uint32_iterator_s it = { 0 };
 	uint32_t i, n;
 
 	roaring_init_iterator(partial, &it);
@@ -1091,19 +1091,30 @@ static int bitmap_or_compressed(struct bitmap_index *bitmap_git,
 				struct compressed_bitmap *partial,
 				int bitmap_pos)
 {
+	size_t x = bitmap_popcount(base);
 	if (partial) {
+		warning("bitmap_or_compressed => partial");
 		switch (partial->type) {
 		case TYPE_EWAH:
+			warning("bitmap_or_compressed => partial popcount: %"PRIuMAX,
+				(uintmax_t)bitmap_popcount(ewah_to_bitmap(compressed_as_ewah(partial))));
 			bitmap_or_ewah(base, compressed_as_ewah(partial));
-			return 0;
+			break;
 		case TYPE_ROARING:
+			warning("bitmap_or_compressed => partial popcount: %"PRIuMAX,
+				(uintmax_t)roaring_bitmap_get_cardinality(compressed_as_roaring(partial)));
 			bitmap_or_roaring(base, compressed_as_roaring(partial));
-			return 0;
+			break;
 		}
+
+		warning("bitmap_or_compressed %"PRIuMAX" => %"PRIuMAX, x,
+			bitmap_popcount(base));
+		return 0;
 
 		unknown_bitmap_type(partial->type);
 	}
 
+	warning("bitmap_or_compressed => set %d", bitmap_pos);
 	bitmap_set(base, bitmap_pos);
 	return 1;
 }
@@ -1113,12 +1124,20 @@ static int add_to_include_set(struct bitmap_index *bitmap_git,
 			      struct commit *commit,
 			      int bitmap_pos)
 {
-	if (data->seen && bitmap_get(data->seen, bitmap_pos))
+	warning("add_to_include_set(%s, %d)", oid_to_hex(&commit->object.oid),
+		bitmap_pos);
+	if (data->seen && bitmap_get(data->seen, bitmap_pos)){
+		warning("add_to_include_set: SEEN");
 		return 0;
+	}
 
-	if (bitmap_get(data->base, bitmap_pos))
+	if (bitmap_get(data->base, bitmap_pos)) {
+		warning("add_to_include_set: NOT_SET");
 		return 0;
+	}
 
+	warning("add_to_include_set: bitmap_or_compressed (%s)",
+		oid_to_hex(&commit->object.oid));
 	return bitmap_or_compressed(bitmap_git, data->base,
 				    bitmap_for_commit(bitmap_git, commit),
 				    bitmap_pos);
@@ -1184,9 +1203,15 @@ static int add_commit_to_bitmap(struct bitmap_index *bitmap_git,
 		switch (or_with->type) {
 		case TYPE_EWAH:
 			bitmap_or_ewah(*base, compressed_as_ewah(or_with));
+			warning("add_commit_to_bitmap(%s) -> %"PRIuMAX,
+				oid_to_hex(&commit->object.oid),
+				(uintmax_t)bitmap_popcount(*base));
 			return 1;
 		case TYPE_ROARING:
 			bitmap_or_roaring(*base, compressed_as_roaring(or_with));
+			warning("add_commit_to_bitmap(%s) -> %"PRIuMAX,
+				oid_to_hex(&commit->object.oid),
+				(uintmax_t)bitmap_popcount(*base));
 			return 1;
 		}
 		unknown_bitmap_type(or_with->type);
@@ -1429,8 +1454,11 @@ static struct bitmap *find_objects(struct bitmap_index *bitmap_git,
 		 * bitmap already (or it has an on-disk bitmap, since
 		 * OR-ing it in covers all of its ancestors).
 		 */
+		warning("NEEDS WALK (%"PRIuMAX")", base ? bitmap_popcount(base) : 0);
 		base = fill_in_bitmap(bitmap_git, revs, base, seen);
 	}
+
+warning("find_objects() => %"PRIuMAX, bitmap_popcount(base));
 
 	return base;
 }
@@ -1924,6 +1952,10 @@ struct bitmap_index *prepare_bitmap_walk(struct rev_info *revs,
 	}
 
 	wants_bitmap = find_objects(bitmap_git, revs, wants, haves_bitmap);
+	warning("wants_bitmap popcount=%"PRIuMAX,
+		bitmap_popcount(wants_bitmap));
+	warning("haves_bitmap popcount=%"PRIuMAX,
+		haves_bitmap ? bitmap_popcount(haves_bitmap) : 0);
 
 	if (!wants_bitmap)
 		BUG("failed to perform bitmap walk");
@@ -2167,6 +2199,10 @@ void traverse_bitmap_commit_list(struct bitmap_index *bitmap_git,
 	show_extended_objects(bitmap_git, revs, show_reachable);
 }
 
+#ifdef Q
+static int hi = 1;
+#endif
+
 static uint32_t count_object_type(struct bitmap_index *bitmap_git,
 				  enum object_type type)
 {
@@ -2174,15 +2210,45 @@ static uint32_t count_object_type(struct bitmap_index *bitmap_git,
 	struct eindex *eindex = &bitmap_git->ext_index;
 
 	uint32_t i = 0, count = 0;
-	struct compressed_bitmap_iterator it;
+	struct compressed_bitmap_iterator it = { 0 };
 	eword_t filter;
 
 	init_type_iterator(&it, bitmap_git, type);
 
+#ifdef Q
+	if (!hi && type == OBJ_COMMIT) {
+		switch (bitmap_git->type) {
+		case TYPE_EWAH: {
+			struct bitmap *x = ewah_to_bitmap(compressed_as_ewah(bitmap_git->commits));
+			for (size_t j = 0; j < x->word_alloc; j++)
+				warning("%"PRIuMAX, (uintmax_t)x->words[j]);
+				}
+				break;
+		case TYPE_ROARING: {
+			struct bitset_s *x = bitset_create();
+			roaring_bitmap_to_bitset(compressed_as_roaring(bitmap_git->commits), x);
+			for (size_t j = 0; j < x->arraysize; j++)
+				warning("%"PRIuMAX, (uintmax_t)x->array[j]);
+			free(x);
+				   }
+				break;
+		default:
+			unknown_bitmap_type(bitmap_git->type);
+		}
+		hi = 1;
+	}
+#endif
+
+#ifdef Q
+	warning("HELLO (popcount=%"PRIuMAX" objects->word_alloc=%"PRIuMAX")", (uintmax_t)bitmap_popcount(objects), objects->word_alloc);
+#endif
 	while (i < objects->word_alloc && compressed_bitmap_iterator_next(&it, &filter)) {
 		eword_t word = objects->words[i++] & filter;
 		count += ewah_bit_popcount64(word);
 	}
+#ifdef Q
+	warning("GOODBYE (count=%"PRIuMAX")", (uintmax_t)count);
+#endif
 
 	for (i = 0; i < eindex->count; ++i) {
 		if (eindex->objects[i]->type == type &&
