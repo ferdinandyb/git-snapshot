@@ -94,14 +94,30 @@ static int repack_config(const char *var, const char *value, void *cb)
 	return git_default_config(var, value, cb);
 }
 
+struct pack_snapshot {
+	struct string_list fname_nonkept_list;
+	struct string_list fname_kept_list;
+};
+
+static void init_pack_snapshot(struct pack_snapshot *snapshot)
+{
+	string_list_init_dup(&snapshot->fname_nonkept_list);
+	string_list_init_dup(&snapshot->fname_kept_list);
+}
+
+static void clear_pack_snapshot(struct pack_snapshot *snapshot)
+{
+	string_list_clear(&snapshot->fname_nonkept_list, 0);
+	string_list_clear(&snapshot->fname_kept_list, 0);
+}
+
 /*
  * Adds all packs hex strings (pack-$HASH) to either fname_nonkept_list
  * or fname_kept_list based on whether each pack has a corresponding
  * .keep file or not.  Packs without a .keep file are not to be kept
  * if we are going to pack everything into one file.
  */
-static void collect_pack_filenames(struct string_list *fname_nonkept_list,
-				   struct string_list *fname_kept_list,
+static void collect_pack_filenames(struct pack_snapshot *snapshot,
 				   const struct string_list *extra_keep)
 {
 	struct packed_git *p;
@@ -125,16 +141,17 @@ static void collect_pack_filenames(struct string_list *fname_nonkept_list,
 		strbuf_strip_suffix(&buf, ".pack");
 
 		if ((extra_keep->nr > 0 && i < extra_keep->nr) || p->pack_keep)
-			string_list_append(fname_kept_list, buf.buf);
+			string_list_append(&snapshot->fname_kept_list, buf.buf);
 		else {
 			struct string_list_item *item;
-			item = string_list_append(fname_nonkept_list, buf.buf);
+			item = string_list_append(&snapshot->fname_nonkept_list,
+						  buf.buf);
 			if (p->is_cruft)
 				item->util = (void*)(uintptr_t)CRUFT_PACK;
 		}
 	}
 
-	string_list_sort(fname_kept_list);
+	string_list_sort(&snapshot->fname_kept_list);
 	strbuf_release(&buf);
 }
 
@@ -324,7 +341,7 @@ static int geometry_cmp(const void *va, const void *vb)
 }
 
 static void init_pack_geometry(struct pack_geometry **geometry_p,
-			       struct string_list *existing_kept_packs,
+			       struct pack_snapshot *snapshot,
 			       const struct pack_objects_args *args)
 {
 	struct packed_git *p;
@@ -361,7 +378,8 @@ static void init_pack_geometry(struct pack_geometry **geometry_p,
 			strbuf_addstr(&buf, pack_basename(p));
 			strbuf_strip_suffix(&buf, ".pack");
 
-			if (string_list_has_string(existing_kept_packs, buf.buf))
+			if (string_list_has_string(&snapshot->fname_kept_list,
+						   buf.buf))
 				continue;
 		}
 		if (p->is_cruft)
@@ -492,7 +510,7 @@ static struct packed_git *get_preferred_pack(struct pack_geometry *geometry)
 }
 
 static void geometry_remove_redundant_packs(struct pack_geometry *geometry,
-					    struct string_list *existing_kept_packs,
+					    struct pack_snapshot *snapshot,
 					    const struct string_list *names)
 {
 	struct strbuf buf = STRBUF_INIT;
@@ -509,7 +527,7 @@ static void geometry_remove_redundant_packs(struct pack_geometry *geometry,
 		strbuf_strip_suffix(&buf, ".pack");
 
 		if ((p->pack_keep) ||
-		    (string_list_has_string(existing_kept_packs,
+		    (string_list_has_string(&snapshot->fname_kept_list,
 					    buf.buf)))
 			continue;
 
@@ -592,14 +610,13 @@ static void midx_snapshot_refs(struct tempfile *f)
 }
 
 static void midx_included_packs(struct string_list *include,
-				struct string_list *existing_nonkept_packs,
-				struct string_list *existing_kept_packs,
+				struct pack_snapshot *snapshot,
 				struct string_list *names,
 				struct pack_geometry *geometry)
 {
 	struct string_list_item *item;
 
-	for_each_string_list_item(item, existing_kept_packs)
+	for_each_string_list_item(item, &snapshot->fname_kept_list)
 		string_list_insert(include, xstrfmt("%s.idx", item->string));
 	for_each_string_list_item(item, names)
 		string_list_insert(include, xstrfmt("pack-%s.idx", item->string));
@@ -627,7 +644,7 @@ static void midx_included_packs(struct string_list *include,
 			string_list_insert(include, strbuf_detach(&buf, NULL));
 		}
 
-		for_each_string_list_item(item, existing_nonkept_packs) {
+		for_each_string_list_item(item, &snapshot->fname_nonkept_list) {
 			if (!((uintptr_t)item->util & CRUFT_PACK)) {
 				/*
 				 * no need to check DELETE_PACK, since we're not
@@ -638,7 +655,7 @@ static void midx_included_packs(struct string_list *include,
 			string_list_insert(include, xstrfmt("%s.idx", item->string));
 		}
 	} else {
-		for_each_string_list_item(item, existing_nonkept_packs) {
+		for_each_string_list_item(item, &snapshot->fname_nonkept_list) {
 			if ((uintptr_t)item->util & DELETE_PACK)
 				continue;
 			string_list_insert(include, xstrfmt("%s.idx", item->string));
@@ -727,8 +744,7 @@ static int write_cruft_pack(const struct pack_objects_args *args,
 			    const char *pack_prefix,
 			    const char *cruft_expiration,
 			    struct string_list *names,
-			    struct string_list *existing_packs,
-			    struct string_list *existing_kept_packs)
+			    struct pack_snapshot *snapshot)
 {
 	struct child_process cmd = CHILD_PROCESS_INIT;
 	struct strbuf line = STRBUF_INIT;
@@ -771,9 +787,9 @@ static int write_cruft_pack(const struct pack_objects_args *args,
 	in = xfdopen(cmd.in, "w");
 	for_each_string_list_item(item, names)
 		fprintf(in, "%s-%s.pack\n", pack_prefix, item->string);
-	for_each_string_list_item(item, existing_packs)
+	for_each_string_list_item(item, &snapshot->fname_nonkept_list)
 		fprintf(in, "-%s.pack\n", item->string);
-	for_each_string_list_item(item, existing_kept_packs)
+	for_each_string_list_item(item, &snapshot->fname_kept_list)
 		fprintf(in, "%s.pack\n", item->string);
 	fclose(in);
 
@@ -805,8 +821,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 	struct child_process cmd = CHILD_PROCESS_INIT;
 	struct string_list_item *item;
 	struct string_list names = STRING_LIST_INIT_DUP;
-	struct string_list existing_nonkept_packs = STRING_LIST_INIT_DUP;
-	struct string_list existing_kept_packs = STRING_LIST_INIT_DUP;
+	struct pack_snapshot snapshot = { 0 };
 	struct pack_geometry *geometry = NULL;
 	struct strbuf line = STRBUF_INIT;
 	struct tempfile *refs_snapshot = NULL;
@@ -879,6 +894,8 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 		OPT_END()
 	};
 
+	init_pack_snapshot(&snapshot);
+
 	git_config(repack_config, &cruft_po_args);
 
 	argc = parse_options(argc, argv, prefix, builtin_repack_options,
@@ -943,13 +960,12 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 	packtmp_name = xstrfmt(".tmp-%d-pack", (int)getpid());
 	packtmp = mkpathdup("%s/%s", packdir, packtmp_name);
 
-	collect_pack_filenames(&existing_nonkept_packs, &existing_kept_packs,
-			       &keep_pack_list);
+	collect_pack_filenames(&snapshot, &keep_pack_list);
 
 	if (geometric_factor) {
 		if (pack_everything)
 			die(_("options '%s' and '%s' cannot be used together"), "--geometric", "-A/-a");
-		init_pack_geometry(&geometry, &existing_kept_packs, &po_args);
+		init_pack_geometry(&geometry, &snapshot, &po_args);
 		split_pack_geometry(geometry, geometric_factor);
 	}
 
@@ -993,7 +1009,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 	if (pack_everything & ALL_INTO_ONE) {
 		repack_promisor_objects(&po_args, &names);
 
-		if (existing_nonkept_packs.nr && delete_redundant &&
+		if (snapshot.fname_nonkept_list.nr && delete_redundant &&
 		    !(pack_everything & PACK_CRUFT)) {
 			for_each_string_list_item(item, &names) {
 				strvec_pushf(&cmd.args, "--keep-pack=%s-%s.pack",
@@ -1081,9 +1097,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 		cruft_po_args.quiet = po_args.quiet;
 
 		ret = write_cruft_pack(&cruft_po_args, packtmp, pack_prefix,
-				       cruft_expiration, &names,
-				       &existing_nonkept_packs,
-				       &existing_kept_packs);
+				       cruft_expiration, &names, &snapshot);
 		if (ret)
 			goto cleanup;
 
@@ -1114,8 +1128,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 					       pack_prefix,
 					       NULL,
 					       &names,
-					       &existing_nonkept_packs,
-					       &existing_kept_packs);
+					       &snapshot);
 			if (ret)
 				goto cleanup;
 		}
@@ -1161,7 +1174,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 
 	if (delete_redundant && pack_everything & ALL_INTO_ONE) {
 		const int hexsz = the_hash_algo->hexsz;
-		for_each_string_list_item(item, &existing_nonkept_packs) {
+		for_each_string_list_item(item, &snapshot.fname_nonkept_list) {
 			char *sha1;
 			size_t len = strlen(item->string);
 			if (len < hexsz)
@@ -1180,8 +1193,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 
 	if (write_midx) {
 		struct string_list include = STRING_LIST_INIT_NODUP;
-		midx_included_packs(&include, &existing_nonkept_packs,
-				    &existing_kept_packs, &names, geometry);
+		midx_included_packs(&include, &snapshot, &names, geometry);
 
 		ret = write_midx_included_packs(&include, geometry,
 						refs_snapshot ? get_tempfile_path(refs_snapshot) : NULL,
@@ -1200,7 +1212,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 
 	if (delete_redundant) {
 		int opts = 0;
-		for_each_string_list_item(item, &existing_nonkept_packs) {
+		for_each_string_list_item(item, &snapshot.fname_nonkept_list) {
 			if (!((uintptr_t)item->util & DELETE_PACK))
 				continue;
 			remove_redundant_pack(packdir, item->string);
@@ -1208,7 +1220,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 
 		if (geometry)
 			geometry_remove_redundant_packs(geometry,
-							&existing_kept_packs,
+							&snapshot,
 							&names);
 
 		if (show_progress)
@@ -1234,8 +1246,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 
 cleanup:
 	string_list_clear(&names, 1);
-	string_list_clear(&existing_nonkept_packs, 0);
-	string_list_clear(&existing_kept_packs, 0);
+	clear_pack_snapshot(&snapshot);
 	clear_pack_geometry(geometry);
 
 	return ret;
