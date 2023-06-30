@@ -726,7 +726,7 @@ static void remove_redundant_bitmaps(struct string_list *include,
 	 * included in the MIDX.
 	 */
 	for_each_string_list_item(item, include) {
-		strbuf_addstr(&path, item->string);
+		strbuf_addstr(&path, basename(item->string));
 		strbuf_strip_suffix(&path, ".idx");
 		strbuf_addstr(&path, ".bitmap");
 
