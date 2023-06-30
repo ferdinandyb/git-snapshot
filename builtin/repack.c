@@ -649,7 +649,8 @@ static void midx_included_packs(struct string_list *include,
 		string_list_insert(include, pack_name_ext(snapshot->kept[i],
 							  "idx"));
 	for_each_string_list_item(item, names)
-		string_list_insert(include, xstrfmt("pack-%s.idx", item->string));
+		string_list_insert(include, xstrfmt("%s/pack-%s.idx", packdir,
+						    item->string));
 	if (geometry) {
 		for (i = geometry->split; i < geometry->pack_nr; i++) {
 			struct packed_git *p = geometry->pack[i];
