@@ -557,6 +557,9 @@ static void geometry_remove_redundant_packs(struct pack_geometry *geometry,
 					   hash_to_hex(p->hash)))
 			continue;
 
+		if (!p->pack_local)
+			continue;
+
 		if (p->pack_keep || snapshot_has_kept_pack(snapshot, p))
 			continue;
 
