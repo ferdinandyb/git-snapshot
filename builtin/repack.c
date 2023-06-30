@@ -151,25 +151,18 @@ static int snapshot_is_redundant(struct pack_snapshot *snapshot, size_t i)
 	return bitmap_get(snapshot->nonkept_delete, i);
 }
 
-static void remove_redundant_pack(const char *dir_name, const char *base_name);
+static void remove_redundant_pack(struct packed_git *pack);
 
 static void snapshot_delete_redundant_packs(struct pack_snapshot *snapshot)
 {
-	struct strbuf buf = STRBUF_INIT;
 	size_t i;
 
 	for (i = 0; i < snapshot->nonkept_nr; i++) {
 		if (!snapshot_is_redundant(snapshot, i))
 			continue;
 
-		strbuf_reset(&buf);
-		strbuf_addstr(&buf, pack_basename(snapshot->nonkept[i]));
-		strbuf_strip_suffix(&buf, ".pack");
-
-		remove_redundant_pack(packdir, buf.buf);
+		remove_redundant_pack(snapshot->nonkept[i]);
 	}
-
-	strbuf_release(&buf);
 }
 
 static void clear_pack_snapshot(struct pack_snapshot *snapshot)
@@ -210,16 +203,12 @@ static void collect_pack_filenames(struct pack_snapshot *snapshot,
 	}
 }
 
-static void remove_redundant_pack(const char *dir_name, const char *base_name)
+static void remove_redundant_pack(struct packed_git *pack)
 {
-	struct strbuf buf = STRBUF_INIT;
 	struct multi_pack_index *m = get_local_multi_pack_index(the_repository);
-	strbuf_addf(&buf, "%s.pack", base_name);
-	if (m && midx_contains_pack(m, buf.buf))
+	if (m && midx_contains_pack(m, pack_basename(pack)))
 		clear_midx_file(the_repository);
-	strbuf_insertf(&buf, 0, "%s/", dir_name);
-	unlink_pack_path(buf.buf, 1);
-	strbuf_release(&buf);
+	unlink_pack_path(pack->pack_name, 1);
 }
 
 static void prepare_pack_objects(struct child_process *cmd,
@@ -561,8 +550,6 @@ static void geometry_remove_redundant_packs(struct pack_geometry *geometry,
 					    struct pack_snapshot *snapshot,
 					    const struct string_list *names)
 {
-	struct strbuf buf = STRBUF_INIT;
-
 	uint32_t i;
 	for (i = 0; i < geometry->split; i++) {
 		struct packed_git *p = geometry->pack[i];
@@ -570,16 +557,11 @@ static void geometry_remove_redundant_packs(struct pack_geometry *geometry,
 					   hash_to_hex(p->hash)))
 			continue;
 
-		strbuf_reset(&buf);
-		strbuf_addstr(&buf, pack_basename(p));
-		strbuf_strip_suffix(&buf, ".pack");
-
 		if (p->pack_keep || snapshot_has_kept_pack(snapshot, p))
 			continue;
 
-		remove_redundant_pack(packdir, buf.buf);
+		remove_redundant_pack(p);
 	}
-	strbuf_release(&buf);
 }
 
 static void clear_pack_geometry(struct pack_geometry *geometry)
