@@ -95,16 +95,20 @@ static int repack_config(const char *var, const char *value, void *cb)
 }
 
 struct pack_snapshot {
-	struct string_list fname_nonkept_list;
+	struct packed_git **nonkept;
+	size_t nonkept_nr, nonkept_alloc;
 
 	struct packed_git **kept;
 	size_t kept_nr, kept_alloc;
+
+	struct bitmap *nonkept_delete;
 };
 
 static void init_pack_snapshot(struct pack_snapshot *snapshot)
 {
 	memset(snapshot, 0, sizeof(struct pack_snapshot));
-	string_list_init_dup(&snapshot->fname_nonkept_list);
+
+	snapshot->nonkept_delete = bitmap_new();
 }
 
 static void insert_kept_pack(struct pack_snapshot *snapshot,
@@ -114,6 +118,16 @@ static void insert_kept_pack(struct pack_snapshot *snapshot,
 
 	snapshot->kept[snapshot->kept_nr] = pack;
 	snapshot->kept_nr++;
+}
+
+static void insert_nonkept_pack(struct pack_snapshot *snapshot,
+				struct packed_git *pack)
+{
+	ALLOC_GROW(snapshot->nonkept, snapshot->nonkept_nr + 1,
+		   snapshot->nonkept_alloc);
+
+	snapshot->nonkept[snapshot->nonkept_nr] = pack;
+	snapshot->nonkept_nr++;
 }
 
 static int snapshot_has_kept_pack(struct pack_snapshot *snapshot,
@@ -127,10 +141,42 @@ static int snapshot_has_kept_pack(struct pack_snapshot *snapshot,
 	return 0;
 }
 
+static void snapshot_mark_redundant(struct pack_snapshot *snapshot, size_t i)
+{
+	bitmap_set(snapshot->nonkept_delete, i);
+}
+
+static int snapshot_is_redundant(struct pack_snapshot *snapshot, size_t i)
+{
+	return bitmap_get(snapshot->nonkept_delete, i);
+}
+
+static void remove_redundant_pack(const char *dir_name, const char *base_name);
+
+static void snapshot_delete_redundant_packs(struct pack_snapshot *snapshot)
+{
+	struct strbuf buf = STRBUF_INIT;
+	size_t i;
+
+	for (i = 0; i < snapshot->nonkept_nr; i++) {
+		if (!snapshot_is_redundant(snapshot, i))
+			continue;
+
+		strbuf_reset(&buf);
+		strbuf_addstr(&buf, pack_basename(snapshot->nonkept[i]));
+		strbuf_strip_suffix(&buf, ".pack");
+
+		remove_redundant_pack(packdir, buf.buf);
+	}
+
+	strbuf_release(&buf);
+}
+
 static void clear_pack_snapshot(struct pack_snapshot *snapshot)
 {
-	string_list_clear(&snapshot->fname_nonkept_list, 0);
+	free(snapshot->nonkept);
 	free(snapshot->kept);
+	bitmap_free(snapshot->nonkept_delete);
 }
 
 /*
@@ -143,7 +189,6 @@ static void collect_pack_filenames(struct pack_snapshot *snapshot,
 				   const struct string_list *extra_keep)
 {
 	struct packed_git *p;
-	struct strbuf buf = STRBUF_INIT;
 
 	for (p = get_all_packs(the_repository); p; p = p->next) {
 		int i;
@@ -158,22 +203,11 @@ static void collect_pack_filenames(struct pack_snapshot *snapshot,
 			if (!fspathcmp(base, extra_keep->items[i].string))
 				break;
 
-		strbuf_reset(&buf);
-		strbuf_addstr(&buf, base);
-		strbuf_strip_suffix(&buf, ".pack");
-
 		if ((extra_keep->nr > 0 && i < extra_keep->nr) || p->pack_keep)
 			insert_kept_pack(snapshot, p);
-		else {
-			struct string_list_item *item;
-			item = string_list_append(&snapshot->fname_nonkept_list,
-						  buf.buf);
-			if (p->is_cruft)
-				item->util = (void*)(uintptr_t)CRUFT_PACK;
-		}
+		else
+			insert_nonkept_pack(snapshot, p);
 	}
-
-	strbuf_release(&buf);
 }
 
 static void remove_redundant_pack(const char *dir_name, const char *base_name)
@@ -652,21 +686,24 @@ static void midx_included_packs(struct string_list *include,
 			string_list_insert(include, pack_name_ext(p, "idx"));
 		}
 
-		for_each_string_list_item(item, &snapshot->fname_nonkept_list) {
-			if (!((uintptr_t)item->util & CRUFT_PACK)) {
+		for (i = 0; i < snapshot->nonkept_nr; i++) {
+			struct packed_git *p = snapshot->nonkept[i];
+			if (!p->is_cruft) {
 				/*
 				 * no need to check DELETE_PACK, since we're not
 				 * doing an ALL_INTO_ONE repack
 				 */
 				continue;
 			}
-			string_list_insert(include, xstrfmt("%s.idx", item->string));
+
+			string_list_insert(include, pack_name_ext(p, "idx"));
 		}
 	} else {
-		for_each_string_list_item(item, &snapshot->fname_nonkept_list) {
-			if ((uintptr_t)item->util & DELETE_PACK)
+		for (i = 0; i < snapshot->nonkept_nr; i++) {
+			struct packed_git *p = snapshot->nonkept[i];
+			if (snapshot_is_redundant(snapshot, i))
 				continue;
-			string_list_insert(include, xstrfmt("%s.idx", item->string));
+			string_list_insert(include, pack_name_ext(p, "idx"));
 		}
 	}
 }
@@ -723,18 +760,13 @@ static void remove_redundant_bitmaps(struct string_list *include,
 {
 	struct strbuf path = STRBUF_INIT;
 	struct string_list_item *item;
-	size_t packdir_len;
-
-	strbuf_addstr(&path, packdir);
-	strbuf_addch(&path, '/');
-	packdir_len = path.len;
 
 	/*
 	 * Remove any pack bitmaps corresponding to packs which are now
 	 * included in the MIDX.
 	 */
 	for_each_string_list_item(item, include) {
-		strbuf_addstr(&path, basename(item->string));
+		strbuf_addstr(&path, item->string);
 		strbuf_strip_suffix(&path, ".idx");
 		strbuf_addstr(&path, ".bitmap");
 
@@ -742,7 +774,7 @@ static void remove_redundant_bitmaps(struct string_list *include,
 			warning_errno(_("could not remove stale bitmap: %s"),
 				      path.buf);
 
-		strbuf_setlen(&path, packdir_len);
+		strbuf_reset(&path);
 	}
 	strbuf_release(&path);
 }
@@ -796,8 +828,8 @@ static int write_cruft_pack(const struct pack_objects_args *args,
 	in = xfdopen(cmd.in, "w");
 	for_each_string_list_item(item, names)
 		fprintf(in, "%s-%s.pack\n", pack_prefix, item->string);
-	for_each_string_list_item(item, &snapshot->fname_nonkept_list)
-		fprintf(in, "-%s.pack\n", item->string);
+	for (i = 0; i < snapshot->nonkept_nr; i++)
+		fprintf(in, "-%s\n", pack_basename(snapshot->nonkept[i]));
 	for (i = 0; i < snapshot->kept_nr; i++)
 		fprintf(in, "%s\n", pack_basename(snapshot->kept[i]));
 	fclose(in);
@@ -1018,7 +1050,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 	if (pack_everything & ALL_INTO_ONE) {
 		repack_promisor_objects(&po_args, &names);
 
-		if (snapshot.fname_nonkept_list.nr && delete_redundant &&
+		if (snapshot.nonkept_nr && delete_redundant &&
 		    !(pack_everything & PACK_CRUFT)) {
 			for_each_string_list_item(item, &names) {
 				strvec_pushf(&cmd.args, "--keep-pack=%s-%s.pack",
@@ -1182,21 +1214,19 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 	/* End of pack replacement. */
 
 	if (delete_redundant && pack_everything & ALL_INTO_ONE) {
-		const int hexsz = the_hash_algo->hexsz;
-		for_each_string_list_item(item, &snapshot.fname_nonkept_list) {
-			char *sha1;
-			size_t len = strlen(item->string);
-			if (len < hexsz)
+		for (i = 0; i < snapshot.nonkept_nr; i++) {
+			struct packed_git *pack = snapshot.nonkept[i];
+			if (string_list_has_string(&names,
+						   hash_to_hex(pack->hash)))
 				continue;
-			sha1 = item->string + len - hexsz;
+
 			/*
 			 * Mark this pack for deletion, which ensures that this
 			 * pack won't be included in a MIDX (if `--write-midx`
 			 * was given) and that we will actually delete this pack
 			 * (if `-d` was given).
 			 */
-			if (!string_list_has_string(&names, sha1))
-				item->util = (void*)(uintptr_t)((size_t)item->util | DELETE_PACK);
+			snapshot_mark_redundant(&snapshot, i);
 		}
 	}
 
@@ -1221,11 +1251,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 
 	if (delete_redundant) {
 		int opts = 0;
-		for_each_string_list_item(item, &snapshot.fname_nonkept_list) {
-			if (!((uintptr_t)item->util & DELETE_PACK))
-				continue;
-			remove_redundant_pack(packdir, item->string);
-		}
+		snapshot_delete_redundant_packs(&snapshot);
 
 		if (geometry)
 			geometry_remove_redundant_packs(geometry,
