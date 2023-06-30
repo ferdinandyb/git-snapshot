@@ -96,19 +96,41 @@ static int repack_config(const char *var, const char *value, void *cb)
 
 struct pack_snapshot {
 	struct string_list fname_nonkept_list;
-	struct string_list fname_kept_list;
+
+	struct packed_git **kept;
+	size_t kept_nr, kept_alloc;
 };
 
 static void init_pack_snapshot(struct pack_snapshot *snapshot)
 {
+	memset(snapshot, 0, sizeof(struct pack_snapshot));
 	string_list_init_dup(&snapshot->fname_nonkept_list);
-	string_list_init_dup(&snapshot->fname_kept_list);
+}
+
+static void insert_kept_pack(struct pack_snapshot *snapshot,
+			     struct packed_git *pack)
+{
+	ALLOC_GROW(snapshot->kept, snapshot->kept_nr + 1, snapshot->kept_alloc);
+
+	snapshot->kept[snapshot->kept_nr] = pack;
+	snapshot->kept_nr++;
+}
+
+static int snapshot_has_kept_pack(struct pack_snapshot *snapshot,
+				  struct packed_git *pack)
+{
+	size_t i;
+	for (i = 0; i < snapshot->kept_nr; i++) {
+		if (!strcmp(snapshot->kept[i]->pack_name, pack->pack_name))
+			return 1;
+	}
+	return 0;
 }
 
 static void clear_pack_snapshot(struct pack_snapshot *snapshot)
 {
 	string_list_clear(&snapshot->fname_nonkept_list, 0);
-	string_list_clear(&snapshot->fname_kept_list, 0);
+	free(snapshot->kept);
 }
 
 /*
@@ -141,7 +163,7 @@ static void collect_pack_filenames(struct pack_snapshot *snapshot,
 		strbuf_strip_suffix(&buf, ".pack");
 
 		if ((extra_keep->nr > 0 && i < extra_keep->nr) || p->pack_keep)
-			string_list_append(&snapshot->fname_kept_list, buf.buf);
+			insert_kept_pack(snapshot, p);
 		else {
 			struct string_list_item *item;
 			item = string_list_append(&snapshot->fname_nonkept_list,
@@ -151,7 +173,6 @@ static void collect_pack_filenames(struct pack_snapshot *snapshot,
 		}
 	}
 
-	string_list_sort(&snapshot->fname_kept_list);
 	strbuf_release(&buf);
 }
 
@@ -346,7 +367,6 @@ static void init_pack_geometry(struct pack_geometry **geometry_p,
 {
 	struct packed_git *p;
 	struct pack_geometry *geometry;
-	struct strbuf buf = STRBUF_INIT;
 
 	*geometry_p = xcalloc(1, sizeof(struct pack_geometry));
 	geometry = *geometry_p;
@@ -374,12 +394,7 @@ static void init_pack_geometry(struct pack_geometry **geometry_p,
 			 * check 'existing_kept_packs' to determine whether to
 			 * ignore it.
 			 */
-			strbuf_reset(&buf);
-			strbuf_addstr(&buf, pack_basename(p));
-			strbuf_strip_suffix(&buf, ".pack");
-
-			if (string_list_has_string(&snapshot->fname_kept_list,
-						   buf.buf))
+			if (snapshot_has_kept_pack(snapshot, p))
 				continue;
 		}
 		if (p->is_cruft)
@@ -394,7 +409,6 @@ static void init_pack_geometry(struct pack_geometry **geometry_p,
 	}
 
 	QSORT(geometry->pack, geometry->pack_nr, geometry_cmp);
-	strbuf_release(&buf);
 }
 
 static void split_pack_geometry(struct pack_geometry *geometry, int factor)
@@ -526,9 +540,7 @@ static void geometry_remove_redundant_packs(struct pack_geometry *geometry,
 		strbuf_addstr(&buf, pack_basename(p));
 		strbuf_strip_suffix(&buf, ".pack");
 
-		if ((p->pack_keep) ||
-		    (string_list_has_string(&snapshot->fname_kept_list,
-					    buf.buf)))
+		if (p->pack_keep || snapshot_has_kept_pack(snapshot, p))
 			continue;
 
 		remove_redundant_pack(packdir, buf.buf);
@@ -615,14 +627,14 @@ static void midx_included_packs(struct string_list *include,
 				struct pack_geometry *geometry)
 {
 	struct string_list_item *item;
+	size_t i;
 
-	for_each_string_list_item(item, &snapshot->fname_kept_list)
-		string_list_insert(include, xstrfmt("%s.idx", item->string));
+	for (i = 0; i < snapshot->kept_nr; i++)
+		string_list_insert(include, pack_name_ext(snapshot->kept[i],
+							  "idx"));
 	for_each_string_list_item(item, names)
 		string_list_insert(include, xstrfmt("pack-%s.idx", item->string));
 	if (geometry) {
-		struct strbuf buf = STRBUF_INIT;
-		uint32_t i;
 		for (i = geometry->split; i < geometry->pack_nr; i++) {
 			struct packed_git *p = geometry->pack[i];
 
@@ -637,11 +649,7 @@ static void midx_included_packs(struct string_list *include,
 			if (!p->pack_local)
 				continue;
 
-			strbuf_addstr(&buf, pack_basename(p));
-			strbuf_strip_suffix(&buf, ".pack");
-			strbuf_addstr(&buf, ".idx");
-
-			string_list_insert(include, strbuf_detach(&buf, NULL));
+			string_list_insert(include, pack_name_ext(p, "idx"));
 		}
 
 		for_each_string_list_item(item, &snapshot->fname_nonkept_list) {
@@ -704,7 +712,7 @@ static int write_midx_included_packs(struct string_list *include,
 
 	in = xfdopen(cmd.in, "w");
 	for_each_string_list_item(item, include)
-		fprintf(in, "%s\n", item->string);
+		fprintf(in, "%s\n", basename(item->string));
 	fclose(in);
 
 	return finish_command(&cmd);
@@ -753,6 +761,7 @@ static int write_cruft_pack(const struct pack_objects_args *args,
 	int ret;
 	const char *scratch;
 	int local = skip_prefix(destination, packdir, &scratch);
+	size_t i;
 
 	prepare_pack_objects(&cmd, args, destination);
 
@@ -789,8 +798,8 @@ static int write_cruft_pack(const struct pack_objects_args *args,
 		fprintf(in, "%s-%s.pack\n", pack_prefix, item->string);
 	for_each_string_list_item(item, &snapshot->fname_nonkept_list)
 		fprintf(in, "-%s.pack\n", item->string);
-	for_each_string_list_item(item, &snapshot->fname_kept_list)
-		fprintf(in, "%s.pack\n", item->string);
+	for (i = 0; i < snapshot->kept_nr; i++)
+		fprintf(in, "%s\n", pack_basename(snapshot->kept[i]));
 	fclose(in);
 
 	out = xfdopen(cmd.out, "r");
@@ -821,7 +830,7 @@ int cmd_repack(int argc, const char **argv, const char *prefix)
 	struct child_process cmd = CHILD_PROCESS_INIT;
 	struct string_list_item *item;
 	struct string_list names = STRING_LIST_INIT_DUP;
-	struct pack_snapshot snapshot = { 0 };
+	struct pack_snapshot snapshot;
 	struct pack_geometry *geometry = NULL;
 	struct strbuf line = STRBUF_INIT;
 	struct tempfile *refs_snapshot = NULL;
