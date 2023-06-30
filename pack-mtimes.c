@@ -7,10 +7,7 @@
 
 static char *pack_mtimes_filename(struct packed_git *p)
 {
-	size_t len;
-	if (!strip_suffix(p->pack_name, ".pack", &len))
-		BUG("pack_name does not end in .pack");
-	return xstrfmt("%.*s.mtimes", (int)len, p->pack_name);
+	return pack_name_ext(p, "mtimes");
 }
 
 #define MTIMES_HEADER_SIZE (12)

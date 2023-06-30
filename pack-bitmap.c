@@ -326,11 +326,7 @@ char *midx_bitmap_filename(struct multi_pack_index *midx)
 
 char *pack_bitmap_filename(struct packed_git *p)
 {
-	size_t len;
-
-	if (!strip_suffix(p->pack_name, ".pack", &len))
-		BUG("pack_name does not end in .pack");
-	return xstrfmt("%.*s.bitmap", (int)len, p->pack_name);
+	return pack_name_ext(p, "bitmap");
 }
 
 static int open_midx_bitmap_1(struct bitmap_index *bitmap_git,

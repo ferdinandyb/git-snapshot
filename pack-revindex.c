@@ -183,10 +183,7 @@ static int create_pack_revindex_in_memory(struct packed_git *p)
 
 static char *pack_revindex_filename(struct packed_git *p)
 {
-	size_t len;
-	if (!strip_suffix(p->pack_name, ".pack", &len))
-		BUG("pack_name does not end in .pack");
-	return xstrfmt("%.*s.rev", (int)len, p->pack_name);
+	return pack_name_ext(p, "rev");
 }
 
 #define RIDX_HEADER_SIZE (12)
