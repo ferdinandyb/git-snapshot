@@ -1190,8 +1190,7 @@ static void write_pack_file(void)
 		unsigned char hash[GIT_MAX_RAWSZ];
 		char *pack_tmp_name = NULL;
 
-		if (pack_to_stdout)
-			f = hashfd_throughput(1, "<stdout>", progress_state);
+		if (pack_to_stdout) f = hashfd_throughput(1, "<stdout>", progress_state);
 		else
 			f = create_tmp_packfile(&pack_tmp_name);
 
@@ -4382,7 +4381,7 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 
 	if (!HAVE_THREADS && delta_search_threads != 1)
 		warning(_("no threads support, ignoring --threads"));
-	if (!pack_to_stdout && !pack_size_limit && !cruft)
+	if (!pack_to_stdout && !pack_size_limit)
 		pack_size_limit = pack_size_limit_cfg;
 	if (pack_to_stdout && pack_size_limit)
 		die(_("--max-pack-size cannot be used to build a pack for transfer"));
@@ -4414,8 +4413,6 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 			die(_("cannot use internal rev list with --cruft"));
 		if (stdin_packs)
 			die(_("cannot use --stdin-packs with --cruft"));
-		if (pack_size_limit)
-			die(_("cannot use --max-pack-size with --cruft"));
 	}
 
 	/*
