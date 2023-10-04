@@ -152,6 +152,7 @@
 /git-shortlog
 /git-show
 /git-show-branch
+/git-show-compat-map
 /git-show-index
 /git-show-ref
 /git-sparse-checkout
