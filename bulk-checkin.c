@@ -294,6 +294,38 @@ static void truncate_checkpoint(struct bulk_checkin_packfile *state,
 	flush_bulk_checkin_packfile(state);
 }
 
+static void finalize_checkpoint(struct bulk_checkin_packfile *state,
+				git_hash_ctx *ctx,
+				git_hash_ctx *compat_ctx,
+				struct hashfile_checkpoint *checkpoint,
+				struct pack_idx_entry *idx,
+				struct object_id *result_oid,
+				const struct git_hash_algo *compat)
+{
+	struct object_id compat_oid = { 0 };
+
+	the_hash_algo->final_oid_fn(result_oid, ctx);
+	if (compat)
+		compat->final_oid_fn(&compat_oid, compat_ctx);
+	if (!idx)
+		return;
+
+	idx->crc32 = crc32_end(state->f);
+	if (already_written(state, result_oid)) {
+		hashfile_truncate(state->f, checkpoint);
+		state->offset = checkpoint->offset;
+		free(idx);
+	} else {
+		oidcpy(&idx->oid, result_oid);
+		if (compat)
+			oidcpy(&idx->compat_oid, &compat_oid);
+		ALLOC_GROW(state->written,
+			   state->nr_written + 1,
+			   state->alloc_written);
+		state->written[state->nr_written++] = idx;
+	}
+}
+
 static int deflate_blob_to_pack(struct bulk_checkin_packfile *state,
 				struct object_id *result_oid,
 				int fd, size_t size,
@@ -329,26 +361,8 @@ static int deflate_blob_to_pack(struct bulk_checkin_packfile *state,
 		if (lseek(fd, seekback, SEEK_SET) == (off_t) -1)
 			return error("cannot seek back");
 	}
-	the_hash_algo->final_oid_fn(result_oid, &ctx);
-	if (compat)
-		compat->final_oid_fn(&compat_oid, &compat_ctx);
-	if (!idx)
-		return 0;
-
-	idx->crc32 = crc32_end(state->f);
-	if (already_written(state, result_oid)) {
-		hashfile_truncate(state->f, &checkpoint);
-		state->offset = checkpoint.offset;
-		free(idx);
-	} else {
-		oidcpy(&idx->oid, result_oid);
-		if (compat)
-			oidcpy(&idx->compat_oid, &compat_oid);
-		ALLOC_GROW(state->written,
-			   state->nr_written + 1,
-			   state->alloc_written);
-		state->written[state->nr_written++] = idx;
-	}
+	finalize_checkpoint(state, &ctx, &compat_ctx, &checkpoint, idx,
+			    result_oid, the_repository->compat_hash_algo);
 	return 0;
 }
 
