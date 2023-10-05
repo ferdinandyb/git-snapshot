@@ -352,4 +352,38 @@ test_expect_success 'merge-tree respects core.useReplaceRefs=false' '
 	test valid = $merged
 '
 
+packdir=".git/objects/pack"
+
+test_expect_success 'merge-tree can pack its result with --write-pack' '
+	git init merge-tree--write-pack &&
+	(
+		cd merge-tree--write-pack &&
+
+		# base has lines [3, 4, 5]
+		#   - side adds to the beginning, resulting in [1, 2, 3, 4, 5]
+		#   - other adds to the end, resulting in [3, 4, 5, 6, 7]
+		#
+		# merging the two should result in a new blob object containing
+		# [1, 2, 3, 4, 5, 6, 7], along with a new tree.
+		test_commit base file "$(test_seq 3 5)" &&
+		git branch -M main &&
+		git checkout -b side main &&
+		test_commit side file "$(test_seq 1 5)" &&
+		git checkout -b other main &&
+		test_commit other file "$(test_seq 3 7)" &&
+
+		find $packdir -type f -name "pack-*.idx" >packs.before &&
+		tree="$(git merge-tree --write-pack \
+			refs/tags/side refs/tags/other)" &&
+		find $packdir -type f -name "pack-*.idx" >packs.after &&
+
+		test_must_be_empty packs.before &&
+		test_line_count = 1 packs.after &&
+
+		git show-index <$(cat packs.after) >objects &&
+		grep "^[1-9][0-9]* $tree" objects
+
+	)
+'
+
 test_done
