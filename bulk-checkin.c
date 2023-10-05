@@ -16,6 +16,7 @@
 #include "packfile.h"
 #include "object-file.h"
 #include "object-store-ll.h"
+#include "object-file-convert.h"
 
 static int odb_transaction_nesting;
 
@@ -442,6 +443,32 @@ static int deflate_blob_to_pack_incore(struct bulk_checkin_packfile *state,
 						   OBJ_BLOB, path, flags);
 }
 
+static int deflate_tree_to_pack_incore(struct bulk_checkin_packfile *state,
+				       struct object_id *result_oid,
+				       const void *buf, size_t size,
+				       const char *path, unsigned flags)
+{
+	git_hash_ctx ctx, compat_ctx;
+
+	format_object_header_hash(the_hash_algo, &ctx, OBJ_TREE, size);
+	if (the_repository->compat_hash_algo) {
+		struct strbuf compat_obj = STRBUF_INIT;
+		if (convert_object_file(&compat_obj, the_repository->hash_algo,
+					the_repository->compat_hash_algo,
+					buf, size, OBJ_TREE, 0) < 0)
+			die(_("unable to convert tree '%s'"), path);
+
+		format_object_header_hash(the_repository->compat_hash_algo,
+					  &compat_ctx, OBJ_TREE, size);
+
+		strbuf_release(&compat_obj);
+	}
+
+	return deflate_obj_contents_to_pack_incore(state, &ctx, &compat_ctx,
+						   result_oid, buf, size,
+						   OBJ_TREE, path, flags);
+}
+
 static int deflate_blob_to_pack(struct bulk_checkin_packfile *state,
 				struct object_id *result_oid,
 				int fd, size_t size,
@@ -531,6 +558,17 @@ int index_blob_bulk_checkin_incore(struct object_id *oid,
 				   const char *path, unsigned flags)
 {
 	int status = deflate_blob_to_pack_incore(&bulk_checkin_packfile, oid,
+						 buf, size, path, flags);
+	if (!odb_transaction_nesting)
+		flush_bulk_checkin_packfile(&bulk_checkin_packfile);
+	return status;
+}
+
+int index_tree_bulk_checkin_incore(struct object_id *oid,
+				   const void *buf, size_t size,
+				   const char *path, unsigned flags)
+{
+	int status = deflate_tree_to_pack_incore(&bulk_checkin_packfile, oid,
 						 buf, size, path, flags);
 	if (!odb_transaction_nesting)
 		flush_bulk_checkin_packfile(&bulk_checkin_packfile);
