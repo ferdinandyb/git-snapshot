@@ -299,16 +299,6 @@ static int graph_read_oid_fanout(const unsigned char *chunk_start,
 	return 0;
 }
 
-static int graph_read_generation_data(const unsigned char *chunk_start,
-				      size_t chunk_size, void *data)
-{
-	struct commit_graph *g = data;
-	if (chunk_size / sizeof(uint32_t) != g->num_commits)
-		return error(_("commit-graph generations chunk is wrong size"));
-	g->chunk_generation_data = chunk_start;
-	return 0;
-}
-
 static int graph_read_bloom_index(const unsigned char *chunk_start,
 				  size_t chunk_size, void *data)
 {
@@ -433,8 +423,11 @@ struct commit_graph *parse_commit_graph(struct repo_settings *s,
 		   &graph->chunk_base_graphs_size);
 
 	if (s->commit_graph_generation_version >= 2) {
-		read_chunk(cf, GRAPH_CHUNKID_GENERATION_DATA,
-			   graph_read_generation_data, graph);
+		if (pair_chunk_expect(cf, GRAPH_CHUNKID_GENERATION_DATA,
+				      &graph->chunk_generation_data,
+				      sizeof(uint32_t),
+				      graph->num_commits))
+			error(_("commit-graph generations chunk is wrong size"));
 		pair_chunk(cf, GRAPH_CHUNKID_GENERATION_DATA_OVERFLOW,
 			   &graph->chunk_generation_data_overflow,
 			   &graph->chunk_generation_data_overflow_size);
