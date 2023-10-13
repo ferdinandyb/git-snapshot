@@ -550,7 +550,7 @@ test_expect_success 'detect missing OID lookup chunk' '
 
 test_expect_success 'detect missing commit data chunk' '
 	corrupt_graph_and_verify $GRAPH_BYTE_COMMIT_DATA_ID "\0" \
-		"commit-graph required commit data chunk missing or corrupted"
+		"commit-graph commit data chunk is wrong size"
 '
 
 test_expect_success 'detect incorrect fanout' '
@@ -875,7 +875,6 @@ test_expect_success 'reader notices too-small commit data chunk' '
 	check_corrupt_chunk CDAT clear 00000000 &&
 	cat >expect.err <<-\EOF &&
 	error: commit-graph commit data chunk is wrong size
-	error: commit-graph required commit data chunk missing or corrupted
 	EOF
 	test_cmp expect.err err
 '
