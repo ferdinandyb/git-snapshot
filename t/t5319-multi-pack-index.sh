@@ -1077,7 +1077,6 @@ test_expect_success 'reader notices too-small oid lookup chunk' '
 	corrupt_chunk OIDL clear 00000000 &&
 	test_must_fail git log 2>err &&
 	cat >expect <<-\EOF &&
-	error: multi-pack-index OID lookup chunk is the wrong size
 	fatal: multi-pack-index required OID lookup chunk missing or corrupted
 	EOF
 	test_cmp expect err
