@@ -17,6 +17,7 @@
 #include "strmap.h"
 #include <oidset.h>
 #include <tree.h>
+#include "tmp-objdir.h"
 
 static const char *short_commit_name(struct commit *commit)
 {
@@ -272,6 +273,7 @@ int cmd_replay(int argc, const char **argv, const char *prefix)
 	struct commit *onto = NULL;
 	const char *onto_name = NULL;
 	int contained = 0;
+	int write_pack = 0;
 
 	struct rev_info revs;
 	struct commit *last_commit = NULL;
@@ -279,6 +281,7 @@ int cmd_replay(int argc, const char **argv, const char *prefix)
 	struct merge_options merge_opt;
 	struct merge_result result;
 	struct strset *update_refs = NULL;
+	struct tmp_objdir *tmp_objdir = NULL;
 	kh_oid_map_t *replayed_commits;
 	int i, ret = 0;
 
@@ -296,6 +299,8 @@ int cmd_replay(int argc, const char **argv, const char *prefix)
 			   N_("replay onto given commit")),
 		OPT_BOOL(0, "contained", &contained,
 			 N_("advance all branches contained in revision-range")),
+		OPT_BOOL(0, "write-pack", &write_pack,
+			 N_("write new objects to a pack instead of as loose")),
 		OPT_END()
 	};
 
@@ -352,8 +357,15 @@ int cmd_replay(int argc, const char **argv, const char *prefix)
 	init_merge_options(&merge_opt, the_repository);
 	memset(&result, 0, sizeof(result));
 	merge_opt.show_rename_progress = 0;
+	merge_opt.write_pack = write_pack;
 	last_commit = onto;
 	replayed_commits = kh_init_oid_map();
+
+	if (merge_opt.write_pack) {
+		tmp_objdir = tmp_objdir_create("replay");
+		tmp_objdir_replace_primary_odb(tmp_objdir, 0);
+	}
+
 	while ((commit = get_revision(&revs))) {
 		const struct name_decoration *decoration;
 		khint_t pos;
@@ -417,5 +429,11 @@ cleanup:
 	/* Return */
 	if (ret < 0)
 		exit(128);
+	if (ret && tmp_objdir) {
+		if (tmp_objdir_repack(tmp_objdir) < 0)
+			ret = 0;
+		else if (tmp_objdir_migrate(tmp_objdir) < 0)
+			ret = 0;
+	}
 	return ret ? 0 : 1;
 }

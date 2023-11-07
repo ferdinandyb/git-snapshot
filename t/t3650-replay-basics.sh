@@ -67,6 +67,43 @@ test_expect_success 'using replay to rebase two branches, one on top of other' '
 	test_cmp expect result
 '
 
+packdir=.git/objects/pack
+
+test_expect_success 'using replay to rebase two branches, with --write-pack' '
+	# Remove the results of the previous rebase, ensuring that they
+	# are pruned from the object store.
+	git gc --prune=now &&
+	test_must_fail git cat-file -t "$(cut -d " " -f 3 expect)" &&
+
+	# Create an extra packfile to ensure that the tmp-objdir repack
+	# takes place outside of the main object store.
+	git checkout --detach &&
+	test_commit unreachable &&
+	git repack -d &&
+	git checkout main &&
+
+	find $packdir -type f -name "*.idx" | sort >packs.before &&
+	git replay --write-pack --onto main topic1..topic2 >result &&
+	find $packdir -type f -name "*.idx" | sort >packs.after &&
+
+	comm -13 packs.before packs.after >packs.new &&
+
+	# Ensure that we got a single new pack.
+	test_line_count = 1 result &&
+	test_line_count = 1 packs.new &&
+
+	# ... and that the rest of the results match our expeectations.
+	git log --format=%s $(cut -f 3 -d " " result) >actual &&
+	test_write_lines E D M L B A >expect &&
+	test_cmp expect actual &&
+
+	printf "update refs/heads/topic2 " >expect &&
+	printf "%s " $(cut -f 3 -d " " result) >>expect &&
+	git rev-parse topic2 >>expect &&
+
+	test_cmp expect result
+'
+
 test_expect_success 'using replay on bare repo to rebase two branches, one on top of other' '
 	git -C bare replay --onto main topic1..topic2 >result-bare &&
 	test_cmp expect result-bare
