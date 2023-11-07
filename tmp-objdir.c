@@ -12,6 +12,7 @@
 #include "strvec.h"
 #include "quote.h"
 #include "object-store-ll.h"
+#include "run-command.h"
 
 struct tmp_objdir {
 	struct strbuf path;
@@ -275,6 +276,18 @@ int tmp_objdir_migrate(struct tmp_objdir *t)
 
 	tmp_objdir_destroy(t);
 	return ret;
+}
+
+int tmp_objdir_repack(struct tmp_objdir *t)
+{
+	struct child_process cmd = CHILD_PROCESS_INIT;
+
+	cmd.git_cmd = 1;
+
+	strvec_pushl(&cmd.args, "repack", "-a", "-d", "-k", "-l", NULL);
+	strvec_pushv(&cmd.env, tmp_objdir_env(t));
+
+	return run_command(&cmd);
 }
 
 const char **tmp_objdir_env(const struct tmp_objdir *t)

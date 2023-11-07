@@ -37,6 +37,12 @@ struct tmp_objdir *tmp_objdir_create(const char *prefix);
 const char **tmp_objdir_env(const struct tmp_objdir *);
 
 /*
+ * Combines all packs in the tmp_objdir into a single pack before migrating.
+ * Removes original pack(s) after installing the combined pack into place.
+ */
+int tmp_objdir_repack(struct tmp_objdir *);
+
+/*
  * Finalize a temporary object directory by migrating its objects into the main
  * object database, removing the temporary directory, and freeing any
  * associated resources.
