@@ -4354,7 +4354,7 @@ static int process_entries(struct merge_options *opt,
 		ret = -1;
 
 	if (opt->write_pack)
-		end_odb_transaction();
+		flush_odb_transaction();
 
 cleanup:
 	string_list_clear(&plist, 0);
@@ -4726,6 +4726,9 @@ void merge_switch_to_result(struct merge_options *opt,
 void merge_finalize(struct merge_options *opt,
 		    struct merge_result *result)
 {
+	if (opt->write_pack)
+		end_odb_transaction();
+
 	if (opt->renormalize)
 		git_attr_set_direction(GIT_ATTR_CHECKIN);
 	assert(opt->priv == NULL);
