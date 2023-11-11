@@ -3412,6 +3412,8 @@ static int detect_and_process_renames(struct merge_options *opt)
 	clean &= process_renames(opt, &combined);
 	trace2_region_leave("merge", "process renames", opt->repo);
 
+	flush_odb_transaction();
+
 	goto simple_cleanup; /* collect_renames() handles some of cleanup */
 
 cleanup:

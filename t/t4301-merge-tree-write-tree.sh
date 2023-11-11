@@ -960,13 +960,16 @@ test_expect_success 'merge-tree can pack its result with --write-pack' '
 	test_commit -C repo base file "$(test_seq 3 5)" &&
 	git -C repo branch -M main &&
 	git -C repo checkout -b side main &&
-	test_commit -C repo side file "$(test_seq 1 5)" &&
+	test_commit -C repo side-file file "$(test_seq 1 5)" &&
+	test_commit -C repo side-file2 file2 "$(test_seq 1 6)" &&
 	git -C repo checkout -b other main &&
-	test_commit -C repo other file "$(test_seq 3 7)" &&
+	test_commit -C repo other-file file "$(test_seq 3 7)" &&
+	git -C repo mv file file2 &&
+	git -C repo commit -m other-file2 &&
 
 	find repo/$packdir -type f -name "pack-*.idx" >packs.before &&
-	tree="$(git -C repo merge-tree --write-pack \
-		refs/tags/side refs/tags/other)" &&
+	git -C repo merge-tree --write-pack side other &&
+
 	blob="$(git -C repo rev-parse $tree:file)" &&
 	find repo/$packdir -type f -name "pack-*.idx" >packs.after &&
 
