@@ -44,4 +44,7 @@ void flush_odb_transaction(void);
  */
 void end_odb_transaction(void);
 
+struct pack_entry;
+int bulk_checkin_pack_entry(const struct object_id *oid, struct pack_entry *e);
+
 #endif

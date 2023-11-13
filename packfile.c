@@ -23,6 +23,7 @@
 #include "commit-graph.h"
 #include "pack-revindex.h"
 #include "promisor-remote.h"
+#include "bulk-checkin.h"
 
 char *odb_pack_name(struct strbuf *buf,
 		    const unsigned char *hash,
@@ -2044,6 +2045,9 @@ int find_pack_entry(struct repository *r, const struct object_id *oid, struct pa
 {
 	struct list_head *pos;
 	struct multi_pack_index *m;
+
+	if (!bulk_checkin_pack_entry(oid, e))
+		return 1;
 
 	prepare_packed_git(r);
 	if (!r->objects->packed_git && !r->objects->multi_pack_index)

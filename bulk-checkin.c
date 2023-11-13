@@ -30,6 +30,8 @@ static struct bulk_checkin_packfile {
 	struct pack_idx_entry **written;
 	uint32_t alloc_written;
 	uint32_t nr_written;
+
+	struct packed_git *fake_packed_git;
 } bulk_checkin_packfile;
 
 static void finish_tmp_packfile(struct strbuf *basename,
@@ -82,6 +84,7 @@ static void flush_bulk_checkin_packfile(struct bulk_checkin_packfile *state)
 
 clear_exit:
 	free(state->written);
+	free(state->fake_packed_git);
 	memset(state, 0, sizeof(*state));
 
 	strbuf_release(&packname);
@@ -529,4 +532,38 @@ void end_odb_transaction(void)
 		return;
 
 	flush_odb_transaction();
+}
+
+static struct packed_git *fake_packed_git(struct bulk_checkin_packfile *state)
+{
+	struct packed_git *p = state->fake_packed_git;
+	if (!p) {
+		FLEX_ALLOC_STR(p, pack_name, "/fake/in-progress.pack");
+		state->fake_packed_git = p;
+		p->pack_fd = state->f->fd;
+		p->do_not_close = 1;
+	}
+
+	hashflush(state->f);
+	p->pack_size = state->f->total; /* maybe add 20 to simulate trailer? */
+
+	return p;
+}
+
+int bulk_checkin_pack_entry(const struct object_id *oid, struct pack_entry *e)
+{
+	size_t i;
+	/*
+	 * this really ought to have some more efficient data structure for
+	 * lookup; ditto for the existing already_written()
+	 */
+	for (i = 0; i < bulk_checkin_packfile.nr_written; i++) {
+		struct pack_idx_entry *p = bulk_checkin_packfile.written[i];
+		if (oideq(&p->oid, oid)) {
+			e->p = fake_packed_git(&bulk_checkin_packfile);
+			e->offset = p->offset;
+			return 0;
+		}
+	}
+	return -1;
 }
