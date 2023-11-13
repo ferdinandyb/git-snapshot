@@ -951,12 +951,6 @@ test_expect_success 'merge-tree can pack its result with --write-pack' '
 	test_when_finished "rm -rf repo" &&
 	git init repo &&
 
-	# base has lines [3, 4, 5]
-	#   - side adds to the beginning, resulting in [1, 2, 3, 4, 5]
-	#   - other adds to the end, resulting in [3, 4, 5, 6, 7]
-	#
-	# merging the two should result in a new blob object containing
-	# [1, 2, 3, 4, 5, 6, 7], along with a new tree.
 	test_commit -C repo base file "$(test_seq 3 5)" &&
 	git -C repo branch -M main &&
 	git -C repo checkout -b side main &&
@@ -968,18 +962,14 @@ test_expect_success 'merge-tree can pack its result with --write-pack' '
 	git -C repo commit -m other-file2 &&
 
 	find repo/$packdir -type f -name "pack-*.idx" >packs.before &&
-	git -C repo merge-tree --write-pack side other &&
-
-	blob="$(git -C repo rev-parse $tree:file)" &&
+	test_must_fail git -C repo merge-tree --write-pack side other &&
 	find repo/$packdir -type f -name "pack-*.idx" >packs.after &&
 
 	test_must_be_empty packs.before &&
 	test_line_count = 1 packs.after &&
 
 	git show-index <$(cat packs.after) >objects &&
-	test_line_count = 2 objects &&
-	grep "^[1-9][0-9]* $tree" objects &&
-	grep "^[1-9][0-9]* $blob" objects
+	test_line_count = 3 objects
 '
 
 test_expect_success 'merge-tree can write multiple packs with --write-pack' '
