@@ -91,7 +91,7 @@ test_expect_success 'pack/index object count mismatch' '
 
 	# ...and make sure that index-pack --verify, which has its
 	# own reading routines, does not segfault.
-	test_must_fail git index-pack --verify $pack
+	test_must_fail git index-pack --threads=1 --verify $pack
 '
 
 test_expect_success 'matched bogus object count' '
@@ -111,7 +111,7 @@ test_expect_success 'matched bogus object count' '
 	git cat-file blob $object >actual &&
 	test_cmp file actual &&
 
-	test_must_fail git index-pack --verify $pack
+	test_must_fail git index-pack --threads=1 --verify $pack
 '
 
 # Note that we cannot check the fallback case for these
@@ -128,7 +128,7 @@ test_expect_success 'bogus object offset (v1)' '
 	munge $idx $((4 * 256)) "\377\0\0\0" &&
 	clear_base &&
 	test_must_fail git cat-file blob $object &&
-	test_must_fail git index-pack --verify $pack
+	test_must_fail git index-pack --threads=1 --verify $pack
 '
 
 test_expect_success 'bogus object offset (v2, no msb)' '
@@ -136,7 +136,7 @@ test_expect_success 'bogus object offset (v2, no msb)' '
 	munge $idx $(ofs_table 1) "\0\377\0\0" &&
 	clear_base &&
 	test_must_fail git cat-file blob $object &&
-	test_must_fail git index-pack --verify $pack
+	test_must_fail git index-pack --threads=1 --verify $pack
 '
 
 test_expect_success 'bogus offset into v2 extended table' '
@@ -144,7 +144,7 @@ test_expect_success 'bogus offset into v2 extended table' '
 	munge $idx $(ofs_table 1) "\377\0\0\0" &&
 	clear_base &&
 	test_must_fail git cat-file blob $object &&
-	test_must_fail git index-pack --verify $pack
+	test_must_fail git index-pack --threads=1 --verify $pack
 '
 
 test_expect_success 'bogus offset inside v2 extended table' '
@@ -169,7 +169,7 @@ test_expect_success 'bogus offset inside v2 extended table' '
 	mv tmp "$idx" &&
 	clear_base &&
 	test_must_fail git cat-file blob $object &&
-	test_must_fail git index-pack --verify $pack
+	test_must_fail git index-pack --threads=1 --verify $pack
 '
 
 test_expect_success 'bogus OFS_DELTA in packfile' '
