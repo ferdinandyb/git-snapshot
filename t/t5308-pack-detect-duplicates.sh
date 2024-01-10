@@ -76,7 +76,7 @@ test_expect_success 'lookup in duplicated pack' '
 test_expect_success 'index-pack can reject packs with duplicates' '
 	clear_packs &&
 	create_pack dups.pack 2 &&
-	test_must_fail git index-pack --strict --stdin <dups.pack &&
+	test_must_fail git index-pack --threads=1 --strict --stdin <dups.pack &&
 	test_expect_code 1 git cat-file -e $LO_SHA1
 '
 
