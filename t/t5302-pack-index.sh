@@ -290,7 +290,7 @@ test_expect_success 'too-large packs report the breach' '
 	pack=$(git pack-objects --all pack </dev/null) &&
 	sz="$(test_file_size pack-$pack.pack)" &&
 	test "$sz" -gt 20 &&
-	test_must_fail git index-pack --max-input-size=20 pack-$pack.pack 2>err &&
+	test_must_fail git index-pack --threads=1 --max-input-size=20 pack-$pack.pack 2>err &&
 	grep "maximum allowed size (20 bytes)" err
 '
 
