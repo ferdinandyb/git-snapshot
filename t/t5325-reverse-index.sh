@@ -64,7 +64,7 @@ test_expect_success 'index-pack can verify reverse indexes' '
 	chmod u+w $rev &&
 	printf "xxxx" | dd of=$rev bs=1 count=4 conv=notrunc &&
 
-	test_must_fail git index-pack --rev-index --verify \
+	test_must_fail git index-pack --threads=1 --rev-index --verify \
 		$packdir/pack-$pack.pack 2>err &&
 	grep "validation error" err
 '
