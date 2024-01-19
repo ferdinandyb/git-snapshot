@@ -37,7 +37,7 @@ Certain bitmap extensions are supported (see: Appendix B). No extensions are
 required for bitmaps corresponding to packfiles. For bitmaps that correspond to
 MIDXs, both the bit-cache and rev-cache extensions are required.
 
-== On-disk format
+== On-disk format (v1)
 
     * A header appears at the beginning:
 
@@ -45,8 +45,9 @@ MIDXs, both the bit-cache and rev-cache extensions are required.
 
 	2-byte version number (network byte order): ::
 
-	    The current implementation only supports version 1
-	    of the bitmap index (the same one as JGit).
+	    The current implementation only supports versions 1
+	    and 2 of the bitmap index (version 1 is the same one
+	    as used in JGit).
 
 	2-byte flags (network byte order): ::
 
@@ -153,6 +154,67 @@ in the index.
 	TRAILER: ::
 		Trailing checksum of the preceding contents.
 
+== On-disk format (v2)
+
+=== Header
+
+4-byte signature::
+The signature is: `{'B', 'I', 'T', 'M'}`.
+
+2-byte version number (network byte order)::
+The v2 bitmap format is 2.
+
+4-byte object ID version (network byte order)::
+We infer the length of object IDs (OIDs) from this value:
+- `sha1` => SHA-1
+- `s256` => SHA-256
+
++
+If the hash type does not match the repository's hash
+algorithm, the reachability bitamp should be ignored, and a
+warning presented to the user.
+
+4-byte number of bitmaps (network byte order)::
+The number of bitmaps (of any type) which are stored in this file.
+
+4-byte number of chunks::
+The number of chunks (see linkgit:gitformat-chunk[5]) stored in this file.
+
+=== Chunk: Commits Index (`CIDX`)
+
+TODO
+
+=== Chunk: Reachability bitmaps (`BDAT`)
+
+TODO
+
+=== Chunk: Name-hash cache (`HASH`)
+
+A table-based cache of 32-bit values, one per object in the
+corresponding packfile or multi-pack index (MIDX). The value at position
+`i` is the hash of the pathname at which the `i`th object (counting in
+index or multi-pack index order) in the pack/MIDX can be found.  This
+can be fed into the delta heuristics to compare objects with similar
+pathnames.
+
+The hash algorithm used is:
+
+----
+uint32_t compute_hash(const char *name)
+{
+  uint32_t hash = 0;
+  const char *c;
+
+  for (c = name; *c; c++) {
+    if (isspace(c))
+      continue;
+    hash = (hash >> 2) + (c << 24);
+  }
+
+  return hash;
+}
+----
+
 == Appendix A: Serialization format for an EWAH bitmap
 
 Ewah bitmaps are serialized in the same protocol as the JAVAEWAH
@@ -209,21 +271,12 @@ presence is indicated by the header flags section described above.
 Name-hash cache
 ---------------
 
-If the BITMAP_OPT_HASH_CACHE flag is set, the end of the bitmap contains
-a cache of 32-bit values, one per object in the pack/MIDX. The value at
-position `i` is the hash of the pathname at which the `i`th object
-(counting in index or multi-pack index order) in the pack/MIDX can be found.
-This can be fed into the delta heuristics to compare objects with similar
-pathnames.
+If the `BITMAP_OPT_HASH_CACHE` flag is set, the end of the bitmap contains
+a cache of 32-bit values, one per object in the pack/MIDX.
 
-The hash algorithm used is:
+The contents of this table are identical to the v2 format (see: above).
 
-    hash = 0;
-    while ((c = *name++))
-	    if (!isspace(c))
-		    hash = (hash >> 2) + (c << 24);
-
-Note that this hashing scheme is tied to the BITMAP_OPT_HASH_CACHE flag.
+Note that this hashing scheme is tied to the `BITMAP_OPT_HASH_CACHE` flag.
 If implementations want to choose a different hashing scheme, they are
 free to do so, but MUST allocate a new header flag (because comparing
 hashes made under two different schemes would be pointless).
