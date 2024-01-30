@@ -1,6 +1,7 @@
 #include "git-compat-util.h"
 #include "gettext.h"
 #include "parse.h"
+#include <float.h>
 
 static uintmax_t get_unit_factor(const char *end)
 {
@@ -81,6 +82,42 @@ static int git_parse_unsigned(const char *value, uintmax_t *ret, uintmax_t max)
 			errno = ERANGE;
 			return 0;
 		}
+		val *= factor;
+		*ret = val;
+		return 1;
+	}
+	errno = EINVAL;
+	return 0;
+}
+
+int git_parse_float(const char *value, float *ret)
+{
+	float val;
+	if (value && *value) {
+		char *end;
+		float factor;
+
+		errno = 0;
+		val = strtof(value, &end);
+		if (errno == ERANGE)
+			return 0;
+		if (end == value) {
+			errno = EINVAL;
+			return 0;
+		}
+
+		factor = get_unit_factor(end);
+		if (!factor) {
+			errno = EINVAL;
+			return 0;
+		}
+
+		if ((val < 0 && -FLT_MAX / factor > val) ||
+		    (val > 0 && FLT_MAX / factor < val)) {
+			errno = ERANGE;
+			return 0;
+		}
+
 		val *= factor;
 		*ret = val;
 		return 1;

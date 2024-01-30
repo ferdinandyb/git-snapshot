@@ -72,10 +72,11 @@ static int fixed_value;
 #define TYPE_BOOL		1
 #define TYPE_INT		2
 #define TYPE_BOOL_OR_INT	3
-#define TYPE_PATH		4
-#define TYPE_EXPIRY_DATE	5
-#define TYPE_COLOR		6
-#define TYPE_BOOL_OR_STR	7
+#define TYPE_FLOAT		4
+#define TYPE_PATH		5
+#define TYPE_EXPIRY_DATE	6
+#define TYPE_COLOR		7
+#define TYPE_BOOL_OR_STR	8
 
 #define OPT_CALLBACK_VALUE(s, l, v, h, i) \
 	{ OPTION_CALLBACK, (s), (l), (v), NULL, (h), PARSE_OPT_NOARG | \
@@ -107,6 +108,8 @@ static int option_parse_type(const struct option *opt, const char *arg,
 			new_type = TYPE_BOOL_OR_INT;
 		else if (!strcmp(arg, "bool-or-str"))
 			new_type = TYPE_BOOL_OR_STR;
+		else if (!strcmp(arg, "float"))
+			new_type = TYPE_FLOAT;
 		else if (!strcmp(arg, "path"))
 			new_type = TYPE_PATH;
 		else if (!strcmp(arg, "expiry-date"))
@@ -163,6 +166,7 @@ static struct option builtin_config_options[] = {
 	OPT_CALLBACK_VALUE(0, "bool", &type, N_("value is \"true\" or \"false\""), TYPE_BOOL),
 	OPT_CALLBACK_VALUE(0, "int", &type, N_("value is decimal number"), TYPE_INT),
 	OPT_CALLBACK_VALUE(0, "bool-or-int", &type, N_("value is --bool or --int"), TYPE_BOOL_OR_INT),
+	OPT_CALLBACK_VALUE(0, "float", &type, N_("value is floating point number"), TYPE_FLOAT),
 	OPT_CALLBACK_VALUE(0, "bool-or-str", &type, N_("value is --bool or string"), TYPE_BOOL_OR_STR),
 	OPT_CALLBACK_VALUE(0, "path", &type, N_("value is a path (file or directory name)"), TYPE_PATH),
 	OPT_CALLBACK_VALUE(0, "expiry-date", &type, N_("value is an expiry date"), TYPE_EXPIRY_DATE),
@@ -265,6 +269,9 @@ static int format_config(struct strbuf *buf, const char *key_,
 		else if (type == TYPE_BOOL)
 			strbuf_addstr(buf, git_config_bool(key_, value_) ?
 				      "true" : "false");
+		else if (type == TYPE_FLOAT)
+			strbuf_addf(buf, "%f",
+				    git_config_float(key_, value_ ? value_ : "", kvi));
 		else if (type == TYPE_BOOL_OR_INT) {
 			int is_bool, v;
 			v = git_config_bool_or_int(key_, value_, kvi,
@@ -441,6 +448,8 @@ static char *normalize_value(const char *key, const char *value,
 		return xstrdup(value);
 	if (type == TYPE_INT)
 		return xstrfmt("%"PRId64, git_config_int64(key, value, kvi));
+	if (type == TYPE_FLOAT)
+		return xstrfmt("%f", git_config_float(key, value, kvi));
 	if (type == TYPE_BOOL)
 		return xstrdup(git_config_bool(key, value) ?  "true" : "false");
 	if (type == TYPE_BOOL_OR_INT) {

@@ -1229,6 +1229,15 @@ unsigned long git_config_ulong(const char *name, const char *value,
 	return ret;
 }
 
+float git_config_float(const char *name, const char *value,
+		       const struct key_value_info *kiv)
+{
+	float ret;
+	if (!git_parse_float(value, &ret))
+		die_bad_number(name, value, kiv);
+	return ret;
+}
+
 ssize_t git_config_ssize_t(const char *name, const char *value,
 			   const struct key_value_info *kvi)
 {
@@ -2437,6 +2446,19 @@ int git_configset_get_ulong(struct config_set *set, const char *key, unsigned lo
 		return 1;
 }
 
+int git_configset_get_float(struct config_set *set, const char *key, float *dest)
+{
+	const char *value;
+	struct key_value_info kvi;
+
+	if (!git_configset_get_value(set, key, &value, &kvi)) {
+		*dest = git_config_float(key, value, &kvi);
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
 int git_configset_get_bool(struct config_set *set, const char *key, int *dest)
 {
 	const char *value;
@@ -2593,6 +2615,13 @@ int repo_config_get_ulong(struct repository *repo,
 {
 	git_config_check_init(repo);
 	return git_configset_get_ulong(repo->config, key, dest);
+}
+
+int repo_config_get_float(struct repository *repo,
+			  const char *key, float *dest)
+{
+	git_config_check_init(repo);
+	return git_configset_get_float(repo->config, key, dest);
 }
 
 int repo_config_get_bool(struct repository *repo,

@@ -262,6 +262,13 @@ ssize_t git_config_ssize_t(const char *, const char *,
 			   const struct key_value_info *);
 
 /**
+ * Parse the string to an single-precision float point value, including unit
+ * factors. Dies on error; otherwise, returns the parsed result.
+ */
+float git_config_float(const char *, const char *,
+		       const struct key_value_info *);
+
+/**
  * Same as `git_config_bool`, except that integers are returned as-is, and
  * an `is_bool` flag is unset.
  */
@@ -536,6 +543,7 @@ int git_configset_get_value(struct config_set *cs, const char *key,
 int git_configset_get_string(struct config_set *cs, const char *key, char **dest);
 int git_configset_get_int(struct config_set *cs, const char *key, int *dest);
 int git_configset_get_ulong(struct config_set *cs, const char *key, unsigned long *dest);
+int git_configset_get_float(struct config_set *set, const char *key, float *dest);
 int git_configset_get_bool(struct config_set *cs, const char *key, int *dest);
 int git_configset_get_bool_or_int(struct config_set *cs, const char *key, int *is_bool, int *dest);
 int git_configset_get_maybe_bool(struct config_set *cs, const char *key, int *dest);
@@ -568,6 +576,8 @@ int repo_config_get_int(struct repository *repo,
 			const char *key, int *dest);
 int repo_config_get_ulong(struct repository *repo,
 			  const char *key, unsigned long *dest);
+int repo_config_get_float(struct repository *repo,
+			  const char *key, float *dest);
 int repo_config_get_bool(struct repository *repo,
 			 const char *key, int *dest);
 int repo_config_get_bool_or_int(struct repository *repo,
