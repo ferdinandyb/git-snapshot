@@ -1391,6 +1391,8 @@ static int write_midx_internal(const char *object_dir,
 	int result = 0;
 	struct chunkfile *cf;
 
+	save_commit_buffer = 0;
+
 	trace2_region_enter("midx", "write_midx_internal", the_repository);
 
 	get_midx_filename(&midx_name, object_dir);
