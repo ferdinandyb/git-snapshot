@@ -20,6 +20,7 @@
 #include "list-objects-filter-options.h"
 #include "midx.h"
 #include "config.h"
+#include "hash-lookup.h"
 
 /*
  * An entry on the bitmap index, representing the bitmap for a given
@@ -109,6 +110,20 @@ struct bitmap_index {
 	/* Version of the bitmap index */
 	unsigned int version;
 };
+
+static const struct object_id *bitmap_entry_oid_access(size_t index,
+						       const void *table)
+{
+	return &((const struct bitmap_entry *)table)[index].oid;
+}
+
+struct bitmap_entry *bitmap_entry_lookup(struct bitmap_entry *entries,
+					 uint32_t entries_nr,
+					 const struct object_id *oid)
+{
+	int pos = oid_pos(oid, entries, entries_nr, bitmap_entry_oid_access);
+	return pos < 0 ? NULL : entries + pos;
+}
 
 static struct ewah_bitmap *lookup_stored_bitmap(struct stored_bitmap *st)
 {
@@ -2429,7 +2444,8 @@ int rebuild_bitmap(const uint32_t *reposition,
 }
 
 uint32_t *create_bitmap_mapping(struct bitmap_index *bitmap_git,
-				struct packing_data *mapping)
+				struct bitmap_entry *entries,
+				uint32_t entries_nr)
 {
 	struct repository *r = the_repository;
 	uint32_t i, num_objects;
@@ -2446,7 +2462,7 @@ uint32_t *create_bitmap_mapping(struct bitmap_index *bitmap_git,
 
 	for (i = 0; i < num_objects; ++i) {
 		struct object_id oid;
-		struct object_entry *oe;
+		struct bitmap_entry *oe;
 		uint32_t index_pos;
 
 		if (bitmap_is_midx(bitmap_git))
@@ -2454,10 +2470,11 @@ uint32_t *create_bitmap_mapping(struct bitmap_index *bitmap_git,
 		else
 			index_pos = pack_pos_to_index(bitmap_git->pack, i);
 		nth_bitmap_object_oid(bitmap_git, &oid, index_pos);
-		oe = packlist_find(mapping, &oid);
+
+		oe = bitmap_entry_lookup(entries, entries_nr, &oid);
 
 		if (oe) {
-			reposition[i] = oe_in_pack_pos(mapping, oe) + 1;
+			reposition[i] = oe->pos + 1;
 			if (bitmap_git->hashes && !oe->hash)
 				oe->hash = get_be32(bitmap_git->hashes + index_pos);
 		}

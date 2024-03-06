@@ -61,6 +61,17 @@ struct bitmapped_pack {
 	uint32_t pack_int_id; /* MIDX only */
 };
 
+struct bitmap_entry {
+	struct object_id oid;
+
+	uint32_t pos;
+	uint32_t hash;
+};
+
+struct bitmap_entry *bitmap_entry_lookup(struct bitmap_entry *entries,
+					 uint32_t entries_nr,
+					 const struct object_id *oid);
+
 struct bitmap_index *prepare_bitmap_git(struct repository *r);
 struct bitmap_index *prepare_midx_bitmap_git(struct multi_pack_index *midx);
 void count_bitmap_commit_list(struct bitmap_index *, uint32_t *commits,
@@ -99,11 +110,12 @@ off_t get_disk_usage_from_bitmap(struct bitmap_index *, struct rev_info *);
 
 void bitmap_writer_show_progress(int show);
 void bitmap_writer_set_checksum(const unsigned char *sha1);
-void bitmap_writer_build_type_index(struct packing_data *to_pack,
-				    struct pack_idx_entry **index,
-				    uint32_t index_nr);
+void bitmap_writer_build_type_index(struct repository *r,
+				    struct bitmap_entry *entries,
+				    uint32_t entries_nr);
 uint32_t *create_bitmap_mapping(struct bitmap_index *bitmap_git,
-				struct packing_data *mapping);
+				struct bitmap_entry *entries,
+				uint32_t entries_nr);
 int rebuild_bitmap(const uint32_t *reposition,
 		   struct ewah_bitmap *source,
 		   struct bitmap *dest);
@@ -111,7 +123,7 @@ struct ewah_bitmap *bitmap_for_commit(struct bitmap_index *bitmap_git,
 				      struct commit *commit);
 void bitmap_writer_select_commits(struct commit **indexed_commits,
 		unsigned int indexed_commits_nr, int max_bitmaps);
-int bitmap_writer_build(struct packing_data *to_pack);
+int bitmap_writer_build(struct repository *r);
 void bitmap_writer_finish(struct pack_idx_entry **index,
 			  uint32_t index_nr,
 			  const char *filename,

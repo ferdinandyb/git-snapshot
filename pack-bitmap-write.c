@@ -34,7 +34,9 @@ struct bitmap_writer {
 	struct ewah_bitmap *tags;
 
 	kh_oid_map_t *bitmaps;
-	struct packing_data *to_pack;
+	struct repository *r;
+	struct bitmap_entry *entries;
+	uint32_t entries_nr;
 
 	struct bitmapped_commit *selected;
 	unsigned int selected_nr, selected_alloc;
@@ -54,59 +56,40 @@ void bitmap_writer_show_progress(int show)
 /**
  * Build the initial type index for the packfile or multi-pack-index
  */
-void bitmap_writer_build_type_index(struct packing_data *to_pack,
-				    struct pack_idx_entry **index,
-				    uint32_t index_nr)
+void bitmap_writer_build_type_index(struct repository *r,
+				    struct bitmap_entry *entries,
+				    uint32_t entries_nr)
 {
+	enum object_type real_type;
 	uint32_t i;
+
+	writer.entries = entries;
+	writer.entries_nr = entries_nr;
 
 	writer.commits = ewah_new();
 	writer.trees = ewah_new();
 	writer.blobs = ewah_new();
 	writer.tags = ewah_new();
-	ALLOC_ARRAY(to_pack->in_pack_pos, to_pack->nr_objects);
 
-	for (i = 0; i < index_nr; ++i) {
-		struct object_entry *entry = (struct object_entry *)index[i];
-		enum object_type real_type;
-
-		oe_set_in_pack_pos(to_pack, entry, i);
-
-		switch (oe_type(entry)) {
-		case OBJ_COMMIT:
-		case OBJ_TREE:
-		case OBJ_BLOB:
-		case OBJ_TAG:
-			real_type = oe_type(entry);
-			break;
-
-		default:
-			real_type = oid_object_info(to_pack->repo,
-						    &entry->idx.oid, NULL);
-			break;
-		}
+	for (i = 0; i < writer.entries_nr; i++) {
+		real_type = oid_object_info(r, &writer.entries[i].oid, NULL);
 
 		switch (real_type) {
 		case OBJ_COMMIT:
 			ewah_set(writer.commits, i);
 			break;
-
 		case OBJ_TREE:
 			ewah_set(writer.trees, i);
 			break;
-
 		case OBJ_BLOB:
 			ewah_set(writer.blobs, i);
 			break;
-
 		case OBJ_TAG:
 			ewah_set(writer.tags, i);
 			break;
-
 		default:
-			die("Missing type information for %s (%d/%d)",
-			    oid_to_hex(&entry->idx.oid), real_type,
-			    oe_type(entry));
+			die(_("missing type information for %s (%d)"),
+			    oid_to_hex(&writer.entries[i].oid), real_type);
 		}
 	}
 }
@@ -131,19 +114,22 @@ static inline void push_bitmapped_commit(struct commit *commit)
 
 static uint32_t find_object_pos(const struct object_id *oid, int *found)
 {
-	struct object_entry *entry = packlist_find(writer.to_pack, oid);
+	const struct bitmap_entry *entry;
 
+	static int found_tmp;
+	if (!found)
+		found = &found_tmp;
+
+	entry = bitmap_entry_lookup(writer.entries, writer.entries_nr, oid);
 	if (!entry) {
-		if (found)
-			*found = 0;
-		warning("Failed to write bitmap index. Packfile doesn't have full closure "
-			"(object %s is missing)", oid_to_hex(oid));
+		*found = 0;
+		warning(_("failed to write bitmap index, missing object %s"),
+			oid_to_hex(oid));
 		return 0;
 	}
 
-	if (found)
-		*found = 1;
-	return oe_in_pack_pos(writer.to_pack, entry);
+	*found = 1;
+	return entry->pos;
 }
 
 static void compute_xor_offsets(void)
@@ -224,7 +210,7 @@ static void bitmap_builder_init(struct bitmap_builder *bb,
 	init_bb_data(&bb->data);
 
 	reset_revision_walk();
-	repo_init_revisions(writer->to_pack->repo, &revs, NULL);
+	repo_init_revisions(writer->r, &revs, NULL);
 	revs.topo_order = 1;
 	revs.first_parent_only = 1;
 
@@ -477,7 +463,7 @@ static void store_selected(struct bb_commit *ent, struct commit *commit)
 	kh_value(writer.bitmaps, hash_pos) = stored;
 }
 
-int bitmap_writer_build(struct packing_data *to_pack)
+int bitmap_writer_build(struct repository *r)
 {
 	struct bitmap_builder bb;
 	size_t i;
@@ -488,17 +474,19 @@ int bitmap_writer_build(struct packing_data *to_pack)
 	uint32_t *mapping;
 	int closed = 1; /* until proven otherwise */
 
+	writer.r = r;
 	writer.bitmaps = kh_init_oid_map();
-	writer.to_pack = to_pack;
 
 	if (writer.show_progress)
 		writer.progress = start_progress("Building bitmaps", writer.selected_nr);
 	trace2_region_enter("pack-bitmap-write", "building_bitmaps_total",
 			    the_repository);
 
-	old_bitmap = prepare_bitmap_git(to_pack->repo);
+	old_bitmap = prepare_bitmap_git(r);
 	if (old_bitmap)
-		mapping = create_bitmap_mapping(old_bitmap, to_pack);
+		mapping = create_bitmap_mapping(old_bitmap,
+						writer.entries,
+						writer.entries_nr);
 	else
 		mapping = NULL;
 

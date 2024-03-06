@@ -1121,25 +1121,26 @@ static int midx_checksum_valid(struct multi_pack_index *m)
 	return hashfile_checksum_valid(m->data, m->data_len);
 }
 
-static void prepare_midx_packing_data(struct packing_data *pdata,
-				      struct write_midx_context *ctx)
+static void prepare_midx_bitmap_entries(struct bitmap_entry **entries_p,
+					struct write_midx_context *ctx)
 {
+	struct bitmap_entry *entries;
 	uint32_t i;
 
-	trace2_region_enter("midx", "prepare_midx_packing_data", the_repository);
+	CALLOC_ARRAY(*entries_p, ctx->entries_nr);
+	entries = *entries_p;
 
-	memset(pdata, 0, sizeof(struct packing_data));
-	prepare_packing_data(the_repository, pdata);
+	trace2_region_enter("midx", "prepare_midx_bitmap_entries",
+			    the_repository);
 
 	for (i = 0; i < ctx->entries_nr; i++) {
-		struct pack_midx_entry *from = &ctx->entries[ctx->pack_order[i]];
-		struct object_entry *to = packlist_alloc(pdata, &from->oid);
-
-		oe_set_in_pack(pdata, to,
-			       ctx->info[ctx->pack_perm[from->pack_int_id]].p);
+		struct bitmap_entry *to = &entries[i];
+		oidcpy(&to->oid, &ctx->entries[i].oid);
+		to->pos = ctx->pack_order[i];
 	}
 
-	trace2_region_leave("midx", "prepare_midx_packing_data", the_repository);
+	trace2_region_leave("midx", "prepare_midx_bitmap_entries",
+			    the_repository);
 }
 
 static int add_ref_to_pending(const char *refname,
@@ -1282,15 +1283,14 @@ static struct commit **find_commits_for_midx_bitmap(uint32_t *indexed_commits_nr
 
 static int write_midx_bitmap(const char *midx_name,
 			     const unsigned char *midx_hash,
-			     struct packing_data *pdata,
+			     struct bitmap_entry *entries,
+			     uint32_t entries_nr,
 			     struct commit **commits,
 			     uint32_t commits_nr,
-			     uint32_t *pack_order,
 			     unsigned flags)
 {
 	int ret, i;
 	uint16_t options = 0;
-	struct pack_idx_entry **index;
 	char *bitmap_name = xstrfmt("%s-%s.bitmap", midx_name,
 					hash_to_hex(midx_hash));
 
@@ -1302,36 +1302,10 @@ static int write_midx_bitmap(const char *midx_name,
 	if (flags & MIDX_WRITE_BITMAP_LOOKUP_TABLE)
 		options |= BITMAP_OPT_LOOKUP_TABLE;
 
-	/*
-	 * Build the MIDX-order index based on pdata.objects (which is already
-	 * in MIDX order; c.f., 'midx_pack_order_cmp()' for the definition of
-	 * this order).
-	 */
-	ALLOC_ARRAY(index, pdata->nr_objects);
-	for (i = 0; i < pdata->nr_objects; i++)
-		index[i] = &pdata->objects[i].idx;
-
 	bitmap_writer_show_progress(flags & MIDX_PROGRESS);
-	bitmap_writer_build_type_index(pdata, index, pdata->nr_objects);
-
-	/*
-	 * bitmap_writer_finish expects objects in lex order, but pack_order
-	 * gives us exactly that. use it directly instead of re-sorting the
-	 * array.
-	 *
-	 * This changes the order of objects in 'index' between
-	 * bitmap_writer_build_type_index and bitmap_writer_finish.
-	 *
-	 * The same re-ordering takes place in the single-pack bitmap code via
-	 * write_idx_file(), which is called by finish_tmp_packfile(), which
-	 * happens between bitmap_writer_build_type_index() and
-	 * bitmap_writer_finish().
-	 */
-	for (i = 0; i < pdata->nr_objects; i++)
-		index[pack_order[i]] = &pdata->objects[i].idx;
-
+	bitmap_writer_build_type_index(the_repository, entries, entries_nr);
 	bitmap_writer_select_commits(commits, commits_nr, -1);
-	ret = bitmap_writer_build(pdata);
+	ret = bitmap_writer_build(the_repository);
 	if (ret < 0)
 		goto cleanup;
 
@@ -1680,14 +1654,15 @@ static int write_midx_internal(const char *object_dir,
 		write_midx_reverse_index(midx_name.buf, midx_hash, &ctx);
 
 	if (flags & MIDX_WRITE_BITMAP) {
-		struct packing_data pdata;
+		struct bitmap_entries *entries;
 		struct commit **commits;
-		uint32_t commits_nr;
+		uint32_t commits_nr, entries_nr;
 
 		if (!ctx.entries_nr)
 			BUG("cannot write a bitmap without any objects");
 
-		prepare_midx_packing_data(&pdata, &ctx);
+		prepare_midx_bitmap_entries(&entries, &ctx);
+		entries_nr = ctx.entries_nr;
 
 		commits = find_commits_for_midx_bitmap(&commits_nr, refs_snapshot, &ctx);
 
