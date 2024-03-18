@@ -27,6 +27,5 @@ clean:
 .PHONY: test
 test: all
 	PATH=$$PWD:$$PATH && \
-	cd ../../../t && \
-	GIT_TEST_CREDENTIAL_HELPER=libsecret
-	./t0303-credential-external.sh
+	GIT_TEST_CREDENTIAL_HELPER=libsecret \
+	make -C ../../../t ./t0303-credential-external.sh
