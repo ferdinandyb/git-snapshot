@@ -1661,9 +1661,10 @@ static int write_midx_internal(const char *object_dir,
 		add_chunk(cf, MIDX_CHUNKID_REVINDEX,
 			  st_mult(ctx.entries_nr, sizeof(uint32_t)),
 			  write_midx_revindex);
-		add_chunk(cf, MIDX_CHUNKID_BITMAPPEDPACKS,
-			  bitmapped_packs_concat_len,
-			  write_midx_bitmapped_packs);
+		if (git_env_bool("GIT_TEST_MIDX_WRITE_BTMP", 1))
+			add_chunk(cf, MIDX_CHUNKID_BITMAPPEDPACKS,
+				  bitmapped_packs_concat_len,
+				  write_midx_bitmapped_packs);
 	}
 
 	write_midx_header(f, get_num_chunks(cf), ctx.nr - dropped_packs);

@@ -2049,7 +2049,14 @@ void reuse_partial_packfile_from_bitmap(struct bitmap_index *bitmap_git,
 
 	load_reverse_index(r, bitmap_git);
 
-	if (bitmap_is_midx(bitmap_git)) {
+	if (!bitmap_is_midx(bitmap_git) ||
+	    !bitmap_git->midx->chunk_bitmapped_packs)
+		multi_pack_reuse = 0;
+
+	if (multi_pack_reuse) {
+		if (!bitmap_is_midx(bitmap_git))
+			BUG("attempting to perform multi-pack reuse on non-MIDX bitmap");
+
 		for (i = 0; i < bitmap_git->midx->num_packs; i++) {
 			struct bitmapped_pack pack;
 			if (nth_bitmapped_pack(r, bitmap_git->midx, &pack, i) < 0) {
@@ -2062,36 +2069,33 @@ void reuse_partial_packfile_from_bitmap(struct bitmap_index *bitmap_git,
 			if (!pack.bitmap_nr)
 				continue;
 
-			if (!multi_pack_reuse && pack.bitmap_pos) {
-				/*
-				 * If we're only reusing a single pack, skip
-				 * over any packs which are not positioned at
-				 * the beginning of the MIDX bitmap.
-				 *
-				 * This is consistent with the existing
-				 * single-pack reuse behavior, which only reuses
-				 * parts of the MIDX's preferred pack.
-				 */
-				continue;
-			}
-
 			ALLOC_GROW(packs, packs_nr + 1, packs_alloc);
 			memcpy(&packs[packs_nr++], &pack, sizeof(pack));
 
 			objects_nr += pack.p->num_objects;
-
-			if (!multi_pack_reuse)
-				break;
 		}
 
 		QSORT(packs, packs_nr, bitmapped_pack_cmp);
 	} else {
+		struct packed_git *pack;
+		if (bitmap_is_midx(bitmap_git)) {
+			uint32_t pack_int_id;
+			if (midx_preferred_pack(bitmap_git->midx, &pack_int_id) < 0) {
+				warning(_("unable to compute preferred pack, "
+					  "disabling pack-reuse"));
+				return;
+			}
+
+			pack = bitmap_git->midx->packs[pack_int_id];
+		} else {
+			pack = bitmap_git->pack;
+		}
+
 		ALLOC_GROW(packs, packs_nr + 1, packs_alloc);
 
-		packs[packs_nr].p = bitmap_git->pack;
-		packs[packs_nr].bitmap_nr = bitmap_git->pack->num_objects;
+		packs[packs_nr].p = pack;
+		packs[packs_nr].bitmap_nr = pack->num_objects;
 		packs[packs_nr].bitmap_pos = 0;
-
 		objects_nr = packs[packs_nr++].bitmap_nr;
 	}
 
