@@ -212,7 +212,7 @@ Performance, Internal Implementation, Development Support etc.
 
  * When bundleURI interface fetches multiple bundles, Git failed to
    take full advantage of all bundles and ended up slurping duplicated
-   objects, which has been corrected..
+   objects, which has been corrected.
 
  * The code to deal with modified paths that are out-of-cone in a
    sparsely checked out working tree has been optimized.
