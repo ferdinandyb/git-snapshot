@@ -1400,8 +1400,8 @@ static int show(int argc, const char **argv, const char *prefix)
 
 static int set_head(int argc, const char **argv, const char *prefix)
 {
-	int i, opt_a = 0, opt_d = 0, result = 0;
-	struct strbuf buf = STRBUF_INIT, buf2 = STRBUF_INIT;
+	int i, opt_a = 0, opt_d = 0, is_ref_changed = 0, result = 0;
+	struct strbuf buf = STRBUF_INIT, buf2 = STRBUF_INIT, buf3 = STRBUF_INIT;
 	char *head_name = NULL;
 
 	struct option options[] = {
@@ -1440,18 +1440,25 @@ static int set_head(int argc, const char **argv, const char *prefix)
 
 	if (head_name) {
 		strbuf_addf(&buf2, "refs/remotes/%s/%s", argv[0], head_name);
+		refs_read_symbolic_ref(get_main_ref_store(the_repository),buf.buf,&buf3);
+		is_ref_changed = strcmp(buf2.buf,buf3.buf);
 		/* make sure it's valid */
 		if (!refs_ref_exists(get_main_ref_store(the_repository), buf2.buf))
 			result |= error(_("Not a valid ref: %s"), buf2.buf);
-		else if (refs_update_symref(get_main_ref_store(the_repository), buf.buf, buf2.buf, "remote set-head"))
+		else if (is_ref_changed && refs_update_symref(get_main_ref_store(the_repository), buf.buf, buf2.buf, "remote set-head"))
 			result |= error(_("Could not setup %s"), buf.buf);
+		else if (opt_a && !strcmp(buf3.buf,""))
+			printf("%s/HEAD was unset: set to %s\n", argv[0], head_name);
+		else if (opt_a && is_ref_changed)
+			printf("%s/HEAD was changed: set to %s\n", argv[0], head_name);
 		else if (opt_a)
-			printf("%s/HEAD set to %s\n", argv[0], head_name);
+			printf("%s/HEAD was unchanged: set to %s\n", argv[0], head_name);
 		free(head_name);
 	}
 
 	strbuf_release(&buf);
 	strbuf_release(&buf2);
+	strbuf_release(&buf3);
 	return result;
 }
 
