@@ -45,14 +45,17 @@ test_expect_success setup '
 '
 
 cat > test/expect << EOF
+  one/HEAD -> one/main
   one/main
   one/side
   origin/HEAD -> origin/main
   origin/main
   origin/side
+  three/HEAD -> three/main
   three/another
   three/main
   three/side
+  two/HEAD -> two/main
   two/another
   two/main
   two/side
@@ -97,6 +100,7 @@ cat > expect << EOF
   origin/HEAD -> origin/main
   origin/main
   origin/side
+  three/HEAD -> three/main
   three/another
   three/main
   three/side
@@ -112,8 +116,10 @@ test_expect_success 'git fetch --multiple (but only one remote)' '
 '
 
 cat > expect << EOF
+  one/HEAD -> one/main
   one/main
   one/side
+  two/HEAD -> two/main
   two/another
   two/main
   two/side
@@ -221,14 +227,17 @@ test_expect_success 'git fetch --multiple --jobs=0 picks a default' '
 
 create_fetch_all_expect () {
 	cat >expect <<-\EOF
+	  one/HEAD -> one/main
 	  one/main
 	  one/side
 	  origin/HEAD -> origin/main
 	  origin/main
 	  origin/side
+	  three/HEAD -> three/main
 	  three/another
 	  three/main
 	  three/side
+	  two/HEAD -> two/main
 	  two/another
 	  two/main
 	  two/side
