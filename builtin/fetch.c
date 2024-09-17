@@ -1577,6 +1577,70 @@ static int backfill_tags(struct display_state *display_state,
 	return retcode;
 }
 
+static const char *abbrev_ref(const char *name, const char *prefix)
+{
+	skip_prefix(name, prefix, &name);
+	return name;
+}
+#define abbrev_branch(name) abbrev_ref((name), "refs/heads/")
+
+static inline int set_head(const struct ref *remote_refs)
+{
+	int result, ref_changed = 0;
+	struct strbuf b_head = STRBUF_INIT, b_remote_head = STRBUF_INIT, b_local_head = STRBUF_INIT, b_prefix = STRBUF_INIT;
+	const char *remote = gtransport->remote->name;
+	char * head_name = NULL;
+	struct ref *ref, *matches;
+	struct ref *fetch_map = NULL, **fetch_map_tail = &fetch_map;
+	struct refspec_item refspec = {
+		.force = 0,
+		.pattern = 1,
+		.src = (char *) "refs/heads/*",
+		.dst = (char *) "refs/heads/*",
+	};
+	struct string_list heads = STRING_LIST_INIT_DUP;
+
+	get_fetch_map(remote_refs, &refspec, &fetch_map_tail, 0);
+	matches = guess_remote_head(find_ref_by_name(remote_refs, "HEAD"),
+				    fetch_map, 1);
+	for (ref = matches; ref; ref = ref->next)
+		string_list_append(&heads, abbrev_branch(ref->name));
+
+
+	if (!heads.nr)
+		result = 1;
+	else if (heads.nr > 1) {
+		result = 1;
+	} else
+		head_name = xstrdup(heads.items[0].string);
+	if (head_name) {
+		strbuf_addf(&b_head, "refs/remotes/%s/HEAD", remote);
+		strbuf_addf(&b_remote_head, "refs/remotes/%s/%s", remote, head_name);
+		strbuf_addf(&b_prefix, "refs/remotes/%s/", remote);
+		if (!refs_read_symbolic_ref(get_main_ref_store(the_repository),b_head.buf,&b_local_head)) {
+			ref_changed = strcmp(b_remote_head.buf,b_local_head.buf);
+			if (heads.nr == 1 && ref_changed) {
+				printf("The ref \'%s/HEAD\' has changed from the locally recorded "
+					"\'%s\' to \'%s\'.\n",remote, abbrev_ref(b_local_head.buf,b_prefix.buf), head_name);
+				printf("Run \'git remote set-head -a %s\' to set it automatically.\n", remote);
+			}
+		}
+		/* make sure it's valid */
+		if (!refs_ref_exists(get_main_ref_store(the_repository), b_remote_head.buf))
+			result = 1;
+		else if (refs_update_symref(get_main_ref_store(the_repository), b_head.buf,
+						b_remote_head.buf, REF_CREATE_ONLY, "fetch"))
+			result = 1;
+		free(head_name);
+	}
+
+	strbuf_release(&b_head);
+	strbuf_release(&b_local_head);
+	strbuf_release(&b_remote_head);
+	strbuf_release(&b_prefix);
+	return result;
+}
+
 static int do_fetch(struct transport *transport,
 		    struct refspec *rs,
 		    const struct fetch_config *config)
@@ -1645,6 +1709,8 @@ static int do_fetch(struct transport *transport,
 			strvec_push(&transport_ls_refs_options.ref_prefixes,
 				    "refs/tags/");
 	}
+
+	strvec_push(&transport_ls_refs_options.ref_prefixes,"HEAD");
 
 	if (must_list_refs) {
 		trace2_region_enter("fetch", "remote_refs", the_repository);
@@ -1790,6 +1856,10 @@ static int do_fetch(struct transport *transport,
 				  "you need to specify exactly one branch with the --set-upstream option"));
 		}
 	}
+	if (!set_head(remote_refs))
+		printf("Ran into issues with \'%s/HEAD\',\n"
+			"use \'git remote set-head -a %s\' to investigate",
+			gtransport->remote->name,gtransport->remote->name);
 
 cleanup:
 	if (retcode) {
@@ -2019,6 +2089,7 @@ static int fetch_multiple(struct string_list *list, int max_children,
 	strvec_clear(&argv);
 	return !!result;
 }
+
 
 /*
  * Fetching from the promisor remote should use the given filter-spec
