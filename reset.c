@@ -75,7 +75,7 @@ static int update_refs(const struct reset_head_opts *opts,
 				      UPDATE_REFS_MSG_ON_ERR);
 		if (!ret)
 			ret = refs_update_symref(get_main_ref_store(the_repository),
-						 "HEAD", switch_to_branch,
+						 "HEAD", switch_to_branch, 0,
 						 reflog_head);
 	}
 	if (!ret && run_hook)

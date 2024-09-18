@@ -2993,6 +2993,8 @@ static int files_transaction_finish(struct ref_store *ref_store,
 		struct ref_update *update = transaction->updates[i];
 		struct ref_lock *lock = update->backend_data;
 
+		if (update->flags & REF_CREATE_ONLY && refs_ref_exists(ref_store, update->refname))
+			continue;
 		if (update->flags & REF_NEEDS_COMMIT ||
 		    update->flags & REF_LOG_ONLY) {
 			if (parse_and_write_reflog(refs, update, lock, err)) {
@@ -3031,6 +3033,8 @@ static int files_transaction_finish(struct ref_store *ref_store,
 	 */
 	for (i = 0; i < transaction->nr; i++) {
 		struct ref_update *update = transaction->updates[i];
+		if (update->flags & REF_CREATE_ONLY && refs_ref_exists(ref_store, update->refname))
+			continue;
 		if (update->flags & REF_DELETING &&
 		    !(update->flags & REF_LOG_ONLY) &&
 		    !(update->flags & REF_IS_PRUNING)) {
@@ -3061,6 +3065,8 @@ static int files_transaction_finish(struct ref_store *ref_store,
 	for (i = 0; i < transaction->nr; i++) {
 		struct ref_update *update = transaction->updates[i];
 		struct ref_lock *lock = update->backend_data;
+		if (update->flags & REF_CREATE_ONLY && refs_ref_exists(ref_store, update->refname))
+			continue;
 
 		if (update->flags & REF_DELETING &&
 		    !(update->flags & REF_LOG_ONLY)) {
@@ -3085,6 +3091,8 @@ cleanup:
 
 	for (i = 0; i < transaction->nr; i++) {
 		struct ref_update *update = transaction->updates[i];
+		if (update->flags & REF_CREATE_ONLY && refs_ref_exists(ref_store, update->refname))
+			continue;
 
 		if (update->flags & REF_DELETED_RMDIR) {
 			/*
