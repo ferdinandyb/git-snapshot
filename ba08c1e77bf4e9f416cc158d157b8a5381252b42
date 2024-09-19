@@ -1,0 +1,5 @@
+v3: - does not rely on remote set-head anymore so it only authenticates
+    once
+    - uses the new REF_CREATE_ONLY to atomically check if the ref exists
+      and only write it if it doesn't
+    - in all other cases the maximum it does is print a warning
