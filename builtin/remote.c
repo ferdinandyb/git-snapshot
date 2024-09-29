@@ -1471,7 +1471,7 @@ static int set_head(int argc, const char **argv, const char *prefix)
 		if (!refs_ref_exists(refs, b_remote_head.buf))
 			result |= error(_("Not a valid ref: %s"), b_remote_head.buf);
 		else if (refs_update_symref_extended(refs, b_head.buf, b_remote_head.buf,
-					"remote set-head", &b_local_head))
+					"remote set-head", &b_local_head, 0))
 			result |= error(_("Could not setup %s"), b_head.buf);
 		else if (opt_a)
 			report_set_head_auto(argv[0], head_name, &b_local_head);
