@@ -3,3 +3,8 @@ v3: - does not rely on remote set-head anymore so it only authenticates
     - uses the new REF_CREATE_ONLY to atomically check if the ref exists
       and only write it if it doesn't
     - in all other cases the maximum it does is print a warning
+
+v4: - instead of the discarded REF_CREATE_ONLY, it uses the existing,
+      but updated transaction api to request a silent create only
+    - it now uses the atomic before_target to determine reporting
+    - refactored for legibility
