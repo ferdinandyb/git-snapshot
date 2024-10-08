@@ -8,3 +8,5 @@ v4: - instead of the discarded REF_CREATE_ONLY, it uses the existing,
       but updated transaction api to request a silent create only
     - it now uses the atomic before_target to determine reporting
     - refactored for legibility
+
+v5: - cleaned up tests
