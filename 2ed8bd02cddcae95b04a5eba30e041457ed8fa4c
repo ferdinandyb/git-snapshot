@@ -20,3 +20,5 @@ v4:
     - changes are now handled atomically via the ref update transaction
     - outputs have changed along the lines of Junio's suggestion
     - minor refactor to set_head for improved legibility
+
+v5: - the minor refactor has been split out into its own patch
