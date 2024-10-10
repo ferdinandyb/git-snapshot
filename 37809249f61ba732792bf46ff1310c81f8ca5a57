@@ -21,3 +21,5 @@ v5: - instead of printing a not too useful message, it now fails
 v6: - fixed style issues and unintended extra empty line
     - removed calls to error(...) inherited from builtin/remote.c so we
       actually fail silently
+    - set the test for remote set-head --auto to the correct value here,
+      which was previously erronously set in the remote set-head patch
