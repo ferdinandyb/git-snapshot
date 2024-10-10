@@ -25,3 +25,4 @@ v5: - the minor refactor has been split out into its own patch
 
 v6: - fixed uninitialized prev_head
     - fixed case of unusual previous target
+    - fixed a test that was previously broken due to faulty logic
