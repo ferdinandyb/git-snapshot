@@ -1,28 +1,23 @@
-v1-v2:
+v3: - does not rely on remote set-head anymore so it only authenticates
+    once
+    - uses the new REF_CREATE_ONLY to atomically check if the ref exists
+      and only write it if it doesn't
+    - in all other cases the maximum it does is print a warning
 
-    was RFC in https://lore.kernel.org/git/20240910203835.2288291-1-bence@ferdinandy.com/
+v4: - instead of the discarded REF_CREATE_ONLY, it uses the existing,
+      but updated transaction api to request a silent create only
+    - it now uses the atomic before_target to determine reporting
+    - refactored for legibility
 
-v3:
+v5: - instead of printing a not too useful message, it now fails
+      silently, this in line with the objective to only set up
+      remote/HEAD automatically if the right thing is trivial, for
+      everything else there is remote set-head
+    - fixed all failing tests
+    - added to new tests, one for checking if remote/HEAD is set to the
+      correct one, and one to test that we do not override remote/HEAD
+      if it has changed on the server from what we have locally
 
-    This patch was originally sent along when I thought set-head was
-    going to be invoked by fetch, but the discussion on the RFC
-    concluded that it should be not. This opened the possibility to make
-    it more explicit.
-
-    Note: although I feel both things the patch does are really just
-    cosmetic, an argument could be made for breaking it into two, one
-    for the no-op part and one for the --auto print update.
-
-    Was sent in:
-    https://lore.kernel.org/git/20240915221055.904107-1-bence@ferdinandy.com/
-
-v4:
-    - changes are now handled atomically via the ref update transaction
-    - outputs have changed along the lines of Junio's suggestion
-    - minor refactor to set_head for improved legibility
-
-v5: - the minor refactor has been split out into its own patch
-
-v6: - fixed uninitialized prev_head
-    - fixed case of unusual previous target
-    - fixed a test that was previously broken due to faulty logic
+v6: - fixed style issues and unintended extra empty line
+    - removed calls to error(...) inherited from builtin/remote.c so we
+      actually fail silently
