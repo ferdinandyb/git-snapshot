@@ -1,0 +1,6 @@
+v4: new patch
+v5: no change
+
+v6: - switched from bool to int for create_only
+    - refactored logic in refs_update_symref with goto as layed out by
+      Junio
