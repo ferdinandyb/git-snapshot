@@ -19,6 +19,8 @@ v5: - instead of printing a not too useful message, it now fails
       if it has changed on the server from what we have locally
 
 v6: - fixed style issues and unintended extra empty line
+    - updated function call with bool to int from previous patch's
+      change
     - removed calls to error(...) inherited from builtin/remote.c so we
       actually fail silently
     - set the test for remote set-head --auto to the correct value here,
