@@ -22,3 +22,6 @@ v4:
     - minor refactor to set_head for improved legibility
 
 v5: - the minor refactor has been split out into its own patch
+
+v6: - fixed uninitialized prev_head
+    - fixed case of unusual previous target
