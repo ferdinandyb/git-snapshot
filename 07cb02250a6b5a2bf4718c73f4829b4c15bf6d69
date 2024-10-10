@@ -14,7 +14,7 @@ v5: - instead of printing a not too useful message, it now fails
       remote/HEAD automatically if the right thing is trivial, for
       everything else there is remote set-head
     - fixed all failing tests
-    - added to new tests, one for checking if remote/HEAD is set to the
+    - added two new tests, one for checking if remote/HEAD is set to the
       correct one, and one to test that we do not override remote/HEAD
       if it has changed on the server from what we have locally
 
