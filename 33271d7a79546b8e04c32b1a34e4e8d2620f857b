@@ -17,3 +17,7 @@ v5: - instead of printing a not too useful message, it now fails
     - added to new tests, one for checking if remote/HEAD is set to the
       correct one, and one to test that we do not override remote/HEAD
       if it has changed on the server from what we have locally
+
+v6: - fixed style issues and unintended extra empty line
+    - removed calls to error(...) inherited from builtin/remote.c so we
+      actually fail silently
