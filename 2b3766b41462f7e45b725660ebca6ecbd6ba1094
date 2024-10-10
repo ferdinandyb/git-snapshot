@@ -25,4 +25,6 @@ v5: - the minor refactor has been split out into its own patch
 
 v6: - fixed uninitialized prev_head
     - fixed case of unusual previous target
-    - fixed a test that was previously broken due to faulty logic
+    - fixed a test that would have been actually broken at this patch
+      (the output was only correct with the later update to fetch)
+    - added 4 tests for the 4 output cases
