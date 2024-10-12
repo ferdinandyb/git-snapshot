@@ -1,3 +1,6 @@
 v4: new patch
 v5: no change
 v6: no change
+
+v7: - change commit prefix to be more in line with project standards
+    - changed error checking to Karthik's suggestion
