@@ -1,0 +1,6 @@
+v4: new patch
+
+v5: - added before_target to reftables backend
+    - added an extra safety check for transaction's existence in refs.c
+
+v6: - no change
