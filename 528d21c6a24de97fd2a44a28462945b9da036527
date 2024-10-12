@@ -25,3 +25,5 @@ v6: - fixed style issues and unintended extra empty line
       actually fail silently
     - set the test for remote set-head --auto to the correct value here,
       which was previously erronously set in the remote set-head patch
+
+v7: - no change
