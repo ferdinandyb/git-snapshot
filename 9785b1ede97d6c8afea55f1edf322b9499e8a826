@@ -9,3 +9,4 @@ v7: - remove the whole before_target concept from the backends and
       handle checking it in refs.c instead
     - rename the before_target to referent which is how the same concept
       is called in the backends
+    - change commit prefix to be more in line with project standards
