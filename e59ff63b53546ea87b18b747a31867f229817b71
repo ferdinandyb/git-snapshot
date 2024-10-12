@@ -28,3 +28,8 @@ v6: - fixed uninitialized prev_head
     - fixed a test that would have been actually broken at this patch
       (the output was only correct with the later update to fetch)
     - added 4 tests for the 4 output cases
+
+v7: - change commit prefix to be more in line with project standards
+    - fixed tests to also work with the reftable backend
+    - renamed report function, fixed style issue with checking buf len
+    - fixed not releasing an strbuf
