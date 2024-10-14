@@ -28,4 +28,5 @@ v6: - fixed style issues and unintended extra empty line
 
 v7: - no change
 
-v8: - no change
+v8: - changed logmsg in call to refs_update_symref from "remote
+      set-head" to "fetch"
