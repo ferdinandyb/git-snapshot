@@ -33,3 +33,5 @@ v7: - change commit prefix to be more in line with project standards
     - fixed tests to also work with the reftable backend
     - renamed report function, fixed style issue with checking buf len
     - fixed not releasing an strbuf
+
+v8: no change
