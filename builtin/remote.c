@@ -1587,18 +1587,25 @@ static int update(int argc, const char **argv, const char *prefix)
 	if (verbose)
 		strvec_push(&cmd.args, "-v");
 	strvec_push(&cmd.args, "--multiple");
-	if (argc < 2)
+	if (argc < 2) {
 		strvec_push(&cmd.args, "default");
+		printf("adding default\n");
+	}
 	for (i = 1; i < argc; i++)
 		strvec_push(&cmd.args, argv[i]);
 
 	if (strcmp(cmd.args.v[cmd.args.nr-1], "default") == 0) {
 		git_config(get_remote_default, &default_defined);
 		if (!default_defined) {
+			printf("default not defined\n");
 			strvec_pop(&cmd.args);
 			strvec_push(&cmd.args, "--all");
 		}
 	}
+	for (int q = 0; q < cmd.args.nr; q++){
+		printf("%s ", cmd.args.v[q]);
+	}
+	printf("\n");
 
 	cmd.git_cmd = 1;
 	return run_command(&cmd);

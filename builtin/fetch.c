@@ -1592,6 +1592,7 @@ static void report_set_head(const char *remote, const char *head_name,
 		printf("Run 'git remote set-head %s %s' to follow the change.\n",
 			remote, head_name);
 	}
+	printf("head: %s\n", head_name);
 }
 
 static const char *strip_refshead(const char *name){
@@ -1625,27 +1626,34 @@ static int set_head(const struct ref *remote_refs)
 	}
 
 
-	if (!heads.nr)
+	if (!heads.nr) {
 		result = 1;
-	else if (heads.nr > 1)
+		printf("headnum\n");
+	}
+	else if (heads.nr > 1) {
 		result = 1;
+		printf("headnum2\n");
+	}
 	else
 		head_name = xstrdup(heads.items[0].string);
 	if (head_name) {
 		strbuf_addf(&b_head, "refs/remotes/%s/HEAD", remote);
 		strbuf_addf(&b_remote_head, "refs/remotes/%s/%s", remote, head_name);
 		/* make sure it's valid */
-		if (!refs_ref_exists(refs, b_remote_head.buf))
+		if (!refs_ref_exists(refs, b_remote_head.buf)){
+			printf("h1\n");
 			result = 1;
+		}
 		else if (refs_update_symref(refs, b_head.buf, b_remote_head.buf,
-					"fetch", &b_local_head, 1))
+					"fetch", &b_local_head, 1)) {
+			printf("h2\n");
 			result = 1;
+		}
 		else
 			report_set_head(remote, head_name, &b_local_head);
 
 		free(head_name);
 	}
-
 	strbuf_release(&b_head);
 	strbuf_release(&b_local_head);
 	strbuf_release(&b_remote_head);
@@ -1720,7 +1728,7 @@ static int do_fetch(struct transport *transport,
 			strvec_push(&transport_ls_refs_options.ref_prefixes,
 				    "refs/tags/");
 	}
-
+	printf("remote:%s\n", transport->remote->name);
 	strvec_push(&transport_ls_refs_options.ref_prefixes, "HEAD");
 
 	if (must_list_refs) {
@@ -1868,6 +1876,7 @@ static int do_fetch(struct transport *transport,
 		}
 	}
 	if (set_head(remote_refs))
+		printf("fuck\n");
 		;
 		/*
 		 * Way too many cases where this can go wrong

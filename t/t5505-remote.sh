@@ -5,41 +5,41 @@ test_description='git remote porcelain-ish'
 TEST_PASSES_SANITIZE_LEAK=true
 . ./test-lib.sh
 
-setup_repository () {
+setup_repository() {
 	mkdir "$1" && (
-	cd "$1" &&
-	git init -b main &&
-	>file &&
-	git add file &&
-	test_tick &&
-	git commit -m "Initial" &&
-	git checkout -b side &&
-	>elif &&
-	git add elif &&
-	test_tick &&
-	git commit -m "Second" &&
-	git checkout main
+		cd "$1" &&
+			git init -b main &&
+			>file &&
+			git add file &&
+			test_tick &&
+			git commit -m "Initial" &&
+			git checkout -b side &&
+			>elif &&
+			git add elif &&
+			test_tick &&
+			git commit -m "Second" &&
+			git checkout main
 	)
 }
 
-tokens_match () {
+tokens_match() {
 	echo "$1" | tr ' ' '\012' | sort | sed -e '/^$/d' >expect &&
-	echo "$2" | tr ' ' '\012' | sort | sed -e '/^$/d' >actual &&
-	test_cmp expect actual
+		echo "$2" | tr ' ' '\012' | sort | sed -e '/^$/d' >actual &&
+		test_cmp expect actual
 }
 
-check_remote_track () {
+check_remote_track() {
 	actual=$(git remote show "$1" | sed -ne 's|^    \(.*\) tracked$|\1|p')
 	shift &&
-	tokens_match "$*" "$actual"
+		tokens_match "$*" "$actual"
 }
 
-check_tracking_branch () {
+check_tracking_branch() {
 	f="" &&
-	r=$(git for-each-ref "--format=%(refname)" |
-		sed -ne "s|^refs/remotes/$1/||p") &&
-	shift &&
-	tokens_match "$*" "$r"
+		r=$(git for-each-ref "--format=%(refname)" |
+			sed -ne "s|^refs/remotes/$1/||p") &&
+		shift &&
+		tokens_match "$*" "$r"
 }
 
 test_expect_success setup '
@@ -775,7 +775,8 @@ test_expect_success 'update' '
 		git remote add drosophila ../two &&
 		git remote add apis ../mirror &&
 		git remote update &&
-		git branch -r >output &&
+		ls .git/refs/remotes/**/* >output &&
+		git branch -r >>output &&
 		test_cmp expect output
 	)
 '
@@ -826,12 +827,12 @@ test_expect_success 'update --prune' '
 '
 
 cat >one/expect <<-\EOF
-  apis/main
-  apis/side
-  manduca/main
-  manduca/side
-  megaloprepus/main
-  megaloprepus/side
+	  apis/main
+	  apis/side
+	  manduca/main
+	  manduca/side
+	  megaloprepus/main
+	  megaloprepus/side
 EOF
 
 test_expect_success 'update default' '
@@ -1247,10 +1248,10 @@ test_expect_success 'new remote' '
 	cmp expect actual
 '
 
-get_url_test () {
+get_url_test() {
 	cat >expect &&
-	git remote get-url "$@" >actual &&
-	test_cmp expect actual
+		git remote get-url "$@" >actual &&
+		test_cmp expect actual
 }
 
 test_expect_success 'get-url on new remote' '
@@ -1469,7 +1470,7 @@ test_expect_success 'extra args: setup' '
 	git remote add origin .
 '
 
-test_extra_arg () {
+test_extra_arg() {
 	test_expect_success "extra args: $*" "
 		test_must_fail git remote $* bogus_extra_arg 2>actual &&
 		test_grep '^usage:' actual
