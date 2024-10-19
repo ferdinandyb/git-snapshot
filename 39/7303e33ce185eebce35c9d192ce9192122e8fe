@@ -35,3 +35,7 @@ v7: - change commit prefix to be more in line with project standards
     - fixed not releasing an strbuf
 
 v8: no change
+
+v9: - mark output strings in report_set_head_auto as translatable
+    - rename buf_prev to b_local_head for consistency
+    - use ${SQ} in tests instead of '\''
