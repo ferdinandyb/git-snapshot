@@ -6,3 +6,6 @@ v7: - change commit prefix to be more in line with project standards
     - changed error checking to Karthik's suggestion
 
 v8: no change
+
+v9: - no change (except for following through the
+      refs_update_symref_extended refactoring)
