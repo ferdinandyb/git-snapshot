@@ -30,3 +30,6 @@ v7: - no change
 
 v8: - changed logmsg in call to refs_update_symref from "remote
       set-head" to "fetch"
+
+v9: - follow through with refs_update_symref_extended
+    - fix test errors uncovered by the new patch
