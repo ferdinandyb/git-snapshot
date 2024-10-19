@@ -12,3 +12,9 @@ v7: - remove the whole before_target concept from the backends and
     - change commit prefix to be more in line with project standards
 
 v8: no change
+
+v9: - instead of adding parameters to refs_update_symref, rename what
+      was in v8 as refs_update_symref_extended and make refs_update_symref
+      a wrapper for that. This significantly reduces the number of files
+      that need to be touched, and avoids adding a lot of dummy NULL-s
+      in unrelated places.
