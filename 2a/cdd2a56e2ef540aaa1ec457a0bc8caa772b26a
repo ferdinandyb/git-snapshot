@@ -39,3 +39,5 @@ v8: no change
 v9: - mark output strings in report_set_head_auto as translatable
     - rename buf_prev to b_local_head for consistency
     - use ${SQ} in tests instead of '\''
+
+v10: no change
