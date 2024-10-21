@@ -18,3 +18,5 @@ v9: - instead of adding parameters to refs_update_symref, rename what
       a wrapper for that. This significantly reduces the number of files
       that need to be touched, and avoids adding a lot of dummy NULL-s
       in unrelated places.
+
+v10: no change
