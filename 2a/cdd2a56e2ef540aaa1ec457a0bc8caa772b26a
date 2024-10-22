@@ -41,3 +41,5 @@ v9: - mark output strings in report_set_head_auto as translatable
     - use ${SQ} in tests instead of '\''
 
 v10: no change
+
+v11: no change
