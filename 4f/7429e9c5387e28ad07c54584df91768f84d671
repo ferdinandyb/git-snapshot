@@ -37,3 +37,5 @@ v9: - follow through with refs_update_symref_extended
 v10: no change
 
 v11: fixed some memory leaks
+
+v12: no change
