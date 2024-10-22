@@ -20,3 +20,5 @@ v9: - instead of adding parameters to refs_update_symref, rename what
       in unrelated places.
 
 v10: no change
+
+v11: no change
