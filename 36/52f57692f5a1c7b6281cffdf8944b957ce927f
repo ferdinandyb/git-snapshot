@@ -35,3 +35,5 @@ v9: - follow through with refs_update_symref_extended
     - fix test errors uncovered by the new patch
 
 v10: no change
+
+v11: no change
