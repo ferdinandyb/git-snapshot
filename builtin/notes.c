@@ -35,6 +35,7 @@ static const char * const git_notes_usage[] = {
 	N_("git notes [--ref <notes-ref>] add [-f] [--allow-empty] [--[no-]separator|--separator=<paragraph-break>] [--[no-]stripspace] [-m <msg> | -F <file> | (-c | -C) <object>] [<object>]"),
 	N_("git notes [--ref <notes-ref>] copy [-f] <from-object> <to-object>"),
 	N_("git notes [--ref <notes-ref>] append [--allow-empty] [--[no-]separator|--separator=<paragraph-break>] [--[no-]stripspace] [-m <msg> | -F <file> | (-c | -C) <object>] [<object>]"),
+	N_("git notes [--ref <notes-ref>] prepend [--allow-empty] [--[no-]separator|--separator=<paragraph-break>] [--[no-]stripspace] [-m <msg> | -F <file> | (-c | -C) <object>] [<object>]"),
 	N_("git notes [--ref <notes-ref>] edit [--allow-empty] [<object>]"),
 	N_("git notes [--ref <notes-ref>] show [<object>]"),
 	N_("git notes [--ref <notes-ref>] merge [-v | -q] [-s <strategy>] <notes-ref>"),
@@ -644,7 +645,8 @@ out:
 	return retval;
 }
 
-static int append_edit(int argc, const char **argv, const char *prefix)
+
+static int append_prepend_edit(int argc, const char **argv, const char *prefix, int prepend)
 {
 	int allow_empty = 0;
 	const char *object_ref;
@@ -716,11 +718,18 @@ static int append_edit(int argc, const char **argv, const char *prefix)
 
 		if (!prev_buf)
 			die(_("unable to read %s"), oid_to_hex(note));
-		if (size)
-			strbuf_add(&buf, prev_buf, size);
-		if (d.buf.len && size)
-			append_separator(&buf);
-		strbuf_insert(&d.buf, 0, buf.buf, buf.len);
+		if (prepend) {
+			if (d.buf.len && size)
+				append_separator(&buf);
+			if (size)
+				strbuf_add(&buf, prev_buf, size);
+		} else {
+			if (size)
+				strbuf_add(&buf, prev_buf, size);
+			if (d.buf.len && size)
+				append_separator(&buf);
+		}
+		strbuf_insert(&d.buf, prepend ? d.buf.len : 0, buf.buf, buf.len);
 
 		free(prev_buf);
 		strbuf_release(&buf);
@@ -743,6 +752,16 @@ static int append_edit(int argc, const char **argv, const char *prefix)
 	free_note_data(&d);
 	free_notes(t);
 	return 0;
+}
+
+static int prepend_edit(int argc, const char **argv, const char *prefix)
+{
+	return append_prepend_edit(argc, argv, prefix, 1);
+}
+
+static int append_edit(int argc, const char **argv, const char *prefix)
+{
+	return append_prepend_edit(argc, argv, prefix, 0);
 }
 
 static int show(int argc, const char **argv, const char *prefix)
@@ -1116,6 +1135,7 @@ int cmd_notes(int argc,
 		OPT_SUBCOMMAND("add", &fn, add),
 		OPT_SUBCOMMAND("copy", &fn, copy),
 		OPT_SUBCOMMAND("append", &fn, append_edit),
+		OPT_SUBCOMMAND("prepend", &fn, prepend_edit),
 		OPT_SUBCOMMAND("edit", &fn, append_edit),
 		OPT_SUBCOMMAND("show", &fn, show),
 		OPT_SUBCOMMAND("merge", &fn, merge),
