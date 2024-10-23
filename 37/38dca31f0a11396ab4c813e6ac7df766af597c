@@ -4,4 +4,6 @@ RFC v1: Cf.
     For that particular series I've used
     git rev-list HEAD~8..HEAD | xargs -i git notes append {} -m "v12: no change"
     for a quick-start on updating notes, when only 1 note needed to be
-    really edited with meaningful content.
+    really edited with meaningful content, and for some of the patches
+    you now need to scroll a bit to actually find that "no change" text,
+    instead of seeing it right at the top.
