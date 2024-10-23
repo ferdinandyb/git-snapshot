@@ -1,5 +1,7 @@
-before
+RFC v1: Cf.
+    https://lore.kernel.org/git/20241023153736.257733-1-bence@ferdinandy.com/T/#m5b6644827590c2518089ab84f936a970c4e9be0f
 
-original
-
-after
+    For that particular series I've used
+    git rev-list HEAD~8..HEAD | xargs -i git notes append {} -m "v12: no change"
+    for a quick-start on updating notes, when only 1 note needed to be
+    really edited with meaningful content.
