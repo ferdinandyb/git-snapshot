@@ -1,0 +1,21 @@
+v4: new patch
+v5: no change
+
+v6: - switched from bool to int for create_only
+    - refactored logic in refs_update_symref with goto as layed out by
+      Junio
+
+v7: - change commit prefix to be more in line with project standards
+    - refactored code to accommodate changes in the first patch, but
+      otherwise no change
+
+v8: no change
+
+v9: - no change (except for following through the
+      refs_update_symref_extended refactoring)
+
+v10: no change
+
+v11: no change
+
+v12: no change

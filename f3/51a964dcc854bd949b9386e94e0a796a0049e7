@@ -1,0 +1,11 @@
+v9: - new patch
+    - a bandaid for the CI issue noticed by Taylor (cf:
+      https://lore.kernel.org/git/Zw8IKyPkG0Hr6%2F5t@nand.local/), but
+      see
+      https://lore.kernel.org/git/D4ZAELFWJMKN.S88LJ6YK31LZ@ferdinandy.com/ for the root cause in detail
+
+v10: no change
+
+v11: no change
+
+v12: added forgotten sign-off

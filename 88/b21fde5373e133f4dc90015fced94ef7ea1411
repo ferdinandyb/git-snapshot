@@ -1,0 +1,26 @@
+v4: new patch
+
+v5: - added before_target to reftables backend
+    - added an extra safety check for transaction's existence in refs.c
+
+v6: - no change
+
+v7: - remove the whole before_target concept from the backends and
+      handle checking it in refs.c instead (thanks Karthik)
+    - rename the before_target to referent which is how the same concept
+      is called in the backends
+    - change commit prefix to be more in line with project standards
+
+v8: no change
+
+v9: - instead of adding parameters to refs_update_symref, rename what
+      was in v8 as refs_update_symref_extended and make refs_update_symref
+      a wrapper for that. This significantly reduces the number of files
+      that need to be touched, and avoids adding a lot of dummy NULL-s
+      in unrelated places.
+
+v10: no change
+
+v11: no change
+
+v12: no change

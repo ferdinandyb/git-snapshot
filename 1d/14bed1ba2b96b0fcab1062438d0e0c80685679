@@ -1,0 +1,16 @@
+v5: new patch (split from the next patch as a preparatory step)
+
+v6: no change
+
+v7: - change commit prefix to be more in line with project standards
+
+v8: no change
+
+v9: - further improve readability by renaming buf, and buf2 consistently
+      with how patch 6 was already done
+
+v10: no change
+
+v11: no change
+
+v12: no change

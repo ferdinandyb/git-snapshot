@@ -1,0 +1,47 @@
+v1-v2:
+
+    was RFC in https://lore.kernel.org/git/20240910203835.2288291-1-bence@ferdinandy.com/
+
+v3:
+
+    This patch was originally sent along when I thought set-head was
+    going to be invoked by fetch, but the discussion on the RFC
+    concluded that it should be not. This opened the possibility to make
+    it more explicit.
+
+    Note: although I feel both things the patch does are really just
+    cosmetic, an argument could be made for breaking it into two, one
+    for the no-op part and one for the --auto print update.
+
+    Was sent in:
+    https://lore.kernel.org/git/20240915221055.904107-1-bence@ferdinandy.com/
+
+v4:
+    - changes are now handled atomically via the ref update transaction
+    - outputs have changed along the lines of Junio's suggestion
+    - minor refactor to set_head for improved legibility
+
+v5: - the minor refactor has been split out into its own patch
+
+v6: - fixed uninitialized prev_head
+    - fixed case of unusual previous target
+    - fixed a test that would have been actually broken at this patch
+      (the output was only correct with the later update to fetch)
+    - added 4 tests for the 4 output cases
+
+v7: - change commit prefix to be more in line with project standards
+    - fixed tests to also work with the reftable backend
+    - renamed report function, fixed style issue with checking buf len
+    - fixed not releasing an strbuf
+
+v8: no change
+
+v9: - mark output strings in report_set_head_auto as translatable
+    - rename buf_prev to b_local_head for consistency
+    - use ${SQ} in tests instead of '\''
+
+v10: no change
+
+v11: no change
+
+v12: no change
